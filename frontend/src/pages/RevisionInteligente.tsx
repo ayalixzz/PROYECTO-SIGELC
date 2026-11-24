@@ -96,7 +96,7 @@ type Revision = RevisionFila & {
   motivo_generacion: string
   plazo_dias_habiles: number | null
   proveedor_externo?: { nombre: 'openai' | 'anthropic'; modelo: string } | null
-  claude?: { puede_solicitar: boolean; solicitud: SolicitudClaude | null } | null
+  claude?: { puede_consultar: boolean; puede_solicitar: boolean; solicitud: SolicitudClaude | null } | null
 }
 type ResultadoOperacion = { tipo: 'exito' | 'error' | 'aviso'; mensaje: string }
 type Ejecutar = (endpoint: string, body: Registro, success: string | ((resultado: Revision) => ResultadoOperacion)) => Promise<boolean>
@@ -621,9 +621,9 @@ function RevisionClaude({ contrato, revision, busy, ejecutar, recargar, abrir }:
   const claude = revision.claude
   const solicitud = claude?.solicitud
   if (!claude?.puede_solicitar && !solicitud) {
-    if (contrato.numero_contrato !== 'SIGELC-DEMO-001' || ![1, 2].includes(revision.version)) return null
+    if (!claude?.puede_consultar) return null
     const consulta = encodeURIComponent(
-      `Usa el conector SIGELC para consultar la entrega ${revision.version} del expediente ficticio SIGELC-DEMO-001. Presenta las observaciones en el chat con documento, ubicación, evidencia exacta y fundamento verificable.`,
+      `Usa el conector SIGELC para consultar la entrega ${revision.version} del expediente ficticio ${contrato.numero_contrato}. Presenta las observaciones en el chat con documento, ubicación, evidencia exacta y fundamento verificable.`,
     )
     return <section className="ri-mode ri-stack" aria-label="Consulta en Claude">
       <p>Las observaciones de esta consulta se muestran en Claude.</p>

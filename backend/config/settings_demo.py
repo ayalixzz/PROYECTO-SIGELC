@@ -38,6 +38,7 @@ SIGELC_IA_PROVEEDOR = base.os.getenv("SIGELC_IA_PROVEEDOR", "").strip().lower()
 SIGELC_IA_ENVIO_FICTICIO = base.os.getenv("SIGELC_IA_ENVIO_FICTICIO", "") == "si"
 
 # Explicit source allowlist for the Windows demo. Disabled by default.
+SIGELC_CLAUDE_CONSULTA_LOCAL = True
 _claude = base.os.getenv("SIGELC_CLAUDE_ENTREGAS", "").split(",")
 SIGELC_CLAUDE_ENTREGAS = tuple(int(valor) for valor in _claude
                               if 1 <= len(valor) <= 19 and valor.isascii() and valor.isdecimal()

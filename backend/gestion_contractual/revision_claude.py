@@ -52,11 +52,22 @@ def _solicitudes(revision, usuario):
 
 
 def estado_claude(revision, usuario, *, analizada, es_vigente, puede_decidir):
+    puede_consultar = (
+        getattr(settings, 'SIGELC_DEMO', False)
+        and getattr(settings, 'SIGELC_CLAUDE_CONSULTA_LOCAL', False)
+        and revision.contrato.numero_contrato == NUMERO
+        and revision.contrato.contratista_identificacion == 'FICTICIO-001'
+        and revision.contrato.entidad.nit == 'SIGELC-DEMO-000'
+        and revision.version in (1, 2)
+    )
     if not _habilitada(revision):
-        return None
+        if not puede_consultar:
+            return None
+        return {'puede_consultar': True, 'puede_solicitar': False, 'solicitud': None}
     solicitud = _solicitudes(revision, usuario).last()
     estado = _estado(revision, solicitud, timezone.now(), revision.contrato) if solicitud else None
     return {
+        'puede_consultar': puede_consultar,
         'puede_solicitar': bool(puede_decidir and analizada and es_vigente
                                and (estado is None or estado['estado'] == 'vencida')),
         'solicitud': estado,

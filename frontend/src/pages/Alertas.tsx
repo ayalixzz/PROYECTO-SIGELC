@@ -167,7 +167,7 @@ function HistorialAlertas({ historial }: { historial: AlertasExpediente['histori
   </section>
 }
 
-function PrioridadTemporal({ id, guardar }: { id: number; guardar: (actualizado: AlertasExpediente) => void }) {
+function PrioridadTemporal({ id, guardar }: { id: number; guardar: (prioridad: AlertasExpediente['prioridad']) => void }) {
   const [busy, setBusy] = useState(false)
   const [aviso, setAviso] = useState<{ tipo: 'exito' | 'error'; mensaje: string }>()
   const solicitud = useRef<{ huella: string; operacion: string } | null>(null)
@@ -184,9 +184,10 @@ function PrioridadTemporal({ id, guardar }: { id: number; guardar: (actualizado:
     setBusy(true)
     setAviso(undefined)
     try {
-      guardar(await api<AlertasExpediente>(`contratos/${id}/alertas/prioridad/`, {
+      const actualizado = await api<AlertasExpediente>(`contratos/${id}/alertas/prioridad/`, {
         method: 'POST', body: { operacion, motivo, vence },
-      }))
+      })
+      guardar(actualizado.prioridad)
       solicitud.current = null
       form.reset()
       setAviso({ tipo: 'exito', mensaje: 'Prioridad temporal registrada.' })
@@ -217,8 +218,8 @@ function PrioridadTemporal({ id, guardar }: { id: number; guardar: (actualizado:
 export function AlertasContrato({ id }: { id: number }) {
   const path = `contratos/${id}/alertas/`
   const recurso = useRecurso<AlertasExpediente>(path)
-  const [actualizado, setActualizado] = useState<AlertasExpediente>()
-  const data = actualizado ?? recurso.data
+  const [prioridadActualizada, setPrioridadActualizada] = useState<AlertasExpediente['prioridad']>()
+  const { data } = recurso
   const registro = useRegistroHitos(data?.puede_registrar ? `${path}registrar/` : null)
   // Update just the history after registration without refetching indefinitely.
   const registroSolicitado = registro.completado
@@ -235,8 +236,8 @@ export function AlertasContrato({ id }: { id: number }) {
   if (recurso.loading) return <Carga texto="Consultando alertas y prioridad…" />
   if (recurso.error) return <RecursoError error={recurso.error} recargar={recurso.recargar} />
   if (!data) return null
-  const { prioridad } = data
-  const actual = actualizado?.historial ?? historial ?? data.historial
+  const prioridad = prioridadActualizada ?? data.prioridad
+  const actual = historial ?? data.historial
   return <div className="ri-stack">
     <HitosError error={registro.error} reintentar={registro.reintentar} />
     <div className="dashboard-grid">
@@ -249,7 +250,7 @@ export function AlertasContrato({ id }: { id: number }) {
           <div><dt>Fecha límite de competencia</dt><dd>{fecha(data.fecha_competencia.fecha)}</dd></div>
           <div><dt>Fuente</dt><dd>Cálculo verificado · versión {data.fecha_competencia.fuente.version}</dd></div>
         </dl>}
-        {data.puede_registrar && <PrioridadTemporal id={id} guardar={setActualizado} />}
+        {data.puede_registrar && <PrioridadTemporal id={id} guardar={setPrioridadActualizada} />}
       </section>
       <ResumenMemorando memo={data.ultimo_memorando} contratoId={id} />
     </div>

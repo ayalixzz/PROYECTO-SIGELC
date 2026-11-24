@@ -44,7 +44,3 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     *MIDDLEWARE[_after_host_check:],
 ]
-STORAGES = {
-    'default': {'BACKEND': 'gestion_contractual.archivos_postgresql.AlmacenamientoPrivadoPostgreSQL'},
-    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
-}

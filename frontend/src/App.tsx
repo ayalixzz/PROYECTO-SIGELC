@@ -52,7 +52,7 @@ function Layout({ usuario, seccion, location, cerrar, children }: {
         <a className={seccion === 'revisiones' ? 'nav-link nav-active' : 'nav-link'} aria-current={seccion === 'revisiones' ? 'page' : undefined}
           href="#/revisiones" onClick={() => setMenu(false)}><Icon name="search" size={19} /> Revisión inteligente</a>
       </nav>
-      <div className="sidebar-footer"><span className="environment-dot" /> Demostración local</div>
+      <div className="sidebar-footer"><span className="environment-dot" /> Demostración</div>
     </aside>
     {menu && <button type="button" className="sidebar-overlay" aria-label="Cerrar navegación" onClick={() => setMenu(false)} />}
     <div className="app-main">

@@ -104,7 +104,7 @@ El perfil `config.settings_supabase` conecta Django al **Session pooler** de un 
    npm.cmd run dev -- --port 5175
    ```
 
-   Abre [SIGELC con Supabase](http://127.0.0.1:5175/). El perfil inicial tiene un esquema nuevo. El asistente no importa los expedientes existentes. Django guarda los documentos en el servidor que lo ejecuta, en `backend/private_media_supabase`. El conector MCP sigue usando el entorno de demo local.
+   Abre [SIGELC con Supabase](http://127.0.0.1:5175/). El perfil inicial tiene un esquema nuevo. El asistente no importa los expedientes existentes. El acceso local con Supabase y el servicio de Render comparten los documentos privados del esquema `sigelc_demo`. El conector MCP sigue usando el entorno de demo local.
 
 ## Demo web en Render
 

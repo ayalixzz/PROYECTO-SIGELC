@@ -38,7 +38,7 @@ export function Login({ onLogin }: { onLogin: (value: Sesion) => void }) {
           <span><Icon name="file" /> Documentos</span>
         </div>
       </div>
-      <p className="login-environment"><span className="environment-dot" /> Demostración local con datos ficticios</p>
+      <p className="login-environment"><span className="environment-dot" /> Demostración con datos ficticios</p>
     </section>
     <section className="login-access" aria-labelledby="login-heading">
       <div className="login-form-wrap">

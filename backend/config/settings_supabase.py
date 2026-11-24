@@ -47,8 +47,11 @@ CSRF_COOKIE_NAME = 'sigelc_supabase_csrf'
 SIGELC_CLAUDE_ENTREGAS = ()
 SIGELC_IA_PROVEEDOR = ''
 SIGELC_IA_ENVIO_FICTICIO = False
-MEDIA_ROOT = _backend / 'private_media_supabase'
 STATIC_ROOT = _backend / 'staticfiles_supabase'
+STORAGES = {
+    'default': {'BACKEND': 'gestion_contractual.archivos_postgresql.AlmacenamientoPrivadoPostgreSQL'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+}
 DATABASES = {
     'default': {
         'ENGINE': 'config.postgres_supabase',
