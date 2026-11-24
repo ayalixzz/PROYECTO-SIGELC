@@ -1,4 +1,4 @@
-"""Compensación local por directorio exclusivo; PostgreSQL y archivos no son ACID conjuntos."""
+"""Escritura de documentos y compensación de archivos en almacenamiento local."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path, PurePosixPath
@@ -7,6 +7,8 @@ import json, logging, os
 from django.core.files.base import ContentFile
 from django.core.exceptions import ValidationError
 from django.db import transaction
+
+from .archivos_postgresql import AlmacenamientoPrivadoPostgreSQL
 
 actual = ContextVar('archivos_sigelc', default=None)
 logger = logging.getLogger(__name__)
@@ -29,19 +31,18 @@ def escritura_con_archivo():
     confirmado = [False]
 
     def guardar(campo, nombre, contenido):
-        # El directorio se reserva exclusivamente ANTES de llamar al storage.
-        # Solo ese espacio pertenece a esta operación; nunca un archivo histórico.
         ruta = PurePosixPath(campo.field.generate_filename(campo.instance, Path(nombre).name).replace('\\', '/'))
         carpeta = ruta.parent / ('operacion-' + uuid4().hex)
         storage = campo.storage
-        directorio = Path(storage.path(str(carpeta)))
-        directorio.parent.mkdir(parents=True, exist_ok=True)
-        directorio.mkdir(exist_ok=False)
         destino = str(carpeta / ruta.name)
-        journal = directorio / 'operacion-pendiente.json'
-        registro = (storage, destino, directorio, journal)
-        archivos.append(registro)
-        journal.write_text(json.dumps({'archivo':destino,'estado':'preparando','id':carpeta.name}), encoding='utf-8')
+        if not isinstance(storage, AlmacenamientoPrivadoPostgreSQL):
+            # Solo el directorio exclusivo de la operación se compensa en disco.
+            directorio = Path(storage.path(str(carpeta)))
+            directorio.parent.mkdir(parents=True, exist_ok=True)
+            directorio.mkdir(exist_ok=False)
+            journal = directorio / 'operacion-pendiente.json'
+            archivos.append((storage, destino, directorio, journal))
+            journal.write_text(json.dumps({'archivo':destino,'estado':'preparando','id':carpeta.name}), encoding='utf-8')
         escrito = storage.save(destino, ContentFile(contenido))
         if escrito != destino:
             raise ValidationError('El almacenamiento cambió la ruta reservada; operación no admitida.')

@@ -105,3 +105,19 @@ El perfil `config.settings_supabase` conecta Django al **Session pooler** de un 
    ```
 
    Abre [SIGELC con Supabase](http://127.0.0.1:5175/). El perfil inicial tiene un esquema nuevo. El asistente no importa los expedientes existentes. Django guarda los documentos en el servidor que lo ejecuta, en `backend/private_media_supabase`. El conector MCP sigue usando el entorno de demo local.
+
+## Demo web en Render
+
+El `Dockerfile` compila React y lo sirve junto a Django mediante HTTPS desde un solo dominio. El servicio gratuito descrito en `render.yaml` utiliza el perfil `config.settings_hospedado`. Supabase conserva los documentos privados de la demo en el esquema `sigelc_demo`, fuera del directorio público de React. Los archivos se descargan desde vistas autenticadas.
+
+1. Aplica las migraciones desde `backend` con `manage.py migrate --settings=config.settings_supabase`. El contenedor comprueba que se hayan aplicado antes de arrancar.
+2. Compila el frontend con `npm.cmd run build` desde `frontend`. Luego aprovisiona el abogado y los expedientes ficticios desde la raíz:
+
+   ```powershell
+   .\scripts\provisionar-demo.ps1 -Supabase
+   .\scripts\provisionar-demo.ps1 -Supabase -CopiarClave
+   ```
+
+   La segunda línea coloca la clave generada de `abogado-demo` temporalmente en el portapapeles del usuario que la creó. La copia cifrada queda en el computador, fuera de Git. Guarda los datos de acceso del cliente en un canal privado.
+3. Crea el servicio Docker desde el repositorio o configura el Blueprint en Render. Introduce `SIGELC_SUPABASE_HOST`, `SIGELC_SUPABASE_USER` y `SIGELC_SUPABASE_PASSWORD` mediante las variables privadas del servicio. Usa una nueva `SIGELC_SUPABASE_SECRET_KEY` para HTTPS. El certificado CA incluido proviene de la distribución oficial de Supabase. [Conexión SSL](https://supabase.com/docs/guides/database/psql)
+4. Abre el dominio HTTPS del servicio, verifica `/api/health/` e inicia sesión como `abogado-demo`. Comprueba un expediente, su historial y un documento ficticio. El plan gratuito puede tardar en reactivarse tras un período sin tráfico. [Límites del plan](https://render.com/docs/free)

@@ -8,6 +8,8 @@ from decimal import Decimal
 import uuid
 from pathlib import Path
 
+from .archivos_modelos import ArchivoPrivado  # noqa: F401
+
 
 class EntidadPublica(models.Model):
     nombre = models.CharField(max_length=255)

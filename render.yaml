@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: sigelc-revision
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health/
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: SIGELC_SUPABASE_HOST
+        sync: false
+      - key: SIGELC_SUPABASE_USER
+        sync: false
+      - key: SIGELC_SUPABASE_PASSWORD
+        sync: false
+      - key: SIGELC_SUPABASE_SECRET_KEY
+        generateValue: true

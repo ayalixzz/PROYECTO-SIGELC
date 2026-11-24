@@ -65,12 +65,26 @@ def clave_operacion(clave):
     return uuid5(NAMESPACE_URL, f'urn:sigelc:demo:v1:{clave}')
 
 
-def verificar_aislamiento():
-    from config.postgres_demo import DATABASE_OID
+def verificar_aislamiento(modo_plantillas):
+    datos = connection.settings_dict
+    if settings.SETTINGS_MODULE == 'config.settings_hospedado':
+        from gestion_contractual.archivos_postgresql import AlmacenamientoPrivadoPostgreSQL
+
+        if modo_plantillas != 'ficticias':
+            raise CommandError('La demo hospedada solo admite --plantillas ficticias.')
+        if (list(connections) != ['default'] or settings.DATABASE_ROUTERS
+                or datos['ENGINE'] != 'config.postgres_supabase'
+                or not isinstance(default_storage, AlmacenamientoPrivadoPostgreSQL)):
+            raise CommandError('La demostración hospedada requiere el esquema y almacenamiento privados.')
+        connection.ensure_connection()
+        if not connection.connection.pgconn.ssl_in_use:
+            raise CommandError('La demostración hospedada requiere TLS.')
+        return
 
     if settings.SETTINGS_MODULE != 'config.settings_demo':
-        raise CommandError('Ejecute la carga con --settings=config.settings_demo.')
-    datos = connection.settings_dict
+        raise CommandError('Ejecute la carga con --settings=config.settings_demo o el perfil hospedado de SIGELC.')
+    from config.postgres_demo import DATABASE_OID
+
     if (list(connections) != ['default'] or settings.DATABASE_ROUTERS
             or datos['ENGINE'] != 'config.postgres_demo' or connection.vendor != 'postgresql'
             or datos['NAME'] != 'test_sigelc_db' or datos['TEST']['NAME'] != 'test_sigelc_db'
@@ -302,7 +316,7 @@ def crear_expediente(*, sufijo, objeto, contratista, entidad, usuario, estados, 
             valor_actual=Decimal('12500000.00'), fecha_suscripcion=suscripcion,
             fecha_inicio=suscripcion + timedelta(days=2), fecha_terminacion=terminacion,
             fecha_asignacion=asignacion, estado_actual=estados[PRIMERO],
-            observaciones='Expediente ficticio para demostración local.',
+            observaciones='Expediente ficticio para demostración SIGELC.',
             supervisor_nombre='Equipo de supervisión ficticio' if soporte else '',
         ),
     )
@@ -345,7 +359,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        verificar_aislamiento()
+        modo_plantillas = options['plantillas']
+        verificar_aislamiento(modo_plantillas)
         hoy = timezone.localdate()
         if hoy.year < 1985:
             raise CommandError('La fecha local está fuera del intervalo del calendario de la demostración.')
@@ -353,7 +368,6 @@ class Command(BaseCommand):
         if not usuario_nombre:
             raise CommandError('Indique un nombre de usuario de demostración.')
         adicionales = options['requerimientos_adicionales']
-        modo_plantillas = options['plantillas']
         carpeta = settings.BASE_DIR.parent / 'plantillas_institucionales'
         ficticias = modo_plantillas == 'ficticias' or (modo_plantillas == 'auto' and not carpeta.exists())
         flujo = FLUJO_DEMO if adicionales else FLUJO_DEMO[:4]

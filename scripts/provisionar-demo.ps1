@@ -1,10 +1,16 @@
 [CmdletBinding()]
-param([switch]$CopiarClave, [switch]$CambiarClave)
+param(
+    [switch]$CopiarClave,
+    [switch]$CambiarClave,
+    [switch]$Supabase,
+    [string]$Python
+)
 
 $ErrorActionPreference = 'Stop'
 $backend = Join-Path (Split-Path -Parent $PSScriptRoot) 'backend'
-$python = Join-Path $backend '.venv\Scripts\python.exe'
-$archivoClave = Join-Path $backend '.demo-clave.dpapi'
+$ejecutable = if ($Python) { (Resolve-Path -LiteralPath $Python).ProviderPath } else { Join-Path $backend '.venv\Scripts\python.exe' }
+$nombreClave = if ($Supabase) { '.demo-supabase-clave.dpapi' } else { '.demo-clave.dpapi' }
+$archivoClave = Join-Path $backend $nombreClave
 $variableClave = 'SIGELC_DEMO_CLAVE_PROVISION'
 
 if ($CopiarClave) {
@@ -19,7 +25,9 @@ if ($CopiarClave) {
 }
 
 $env:PYTHONDONTWRITEBYTECODE = '1'
-$argumentos = @('manage.py', 'sembrar_demo', '--settings=config.settings_demo', '--requerimientos-adicionales')
+$perfil = if ($Supabase) { 'config.settings_hospedado' } else { 'config.settings_demo' }
+$argumentos = @('manage.py', 'sembrar_demo', "--settings=$perfil", '--requerimientos-adicionales')
+if ($Supabase) { $argumentos += @('--plantillas', 'ficticias') }
 $generar = $CambiarClave -or -not (Test-Path -LiteralPath $archivoClave)
 if ($generar) {
     $bytes = New-Object byte[] 30
@@ -35,13 +43,18 @@ if ($generar) {
 }
 
 Push-Location $backend
+$hostAnterior = $env:RENDER_EXTERNAL_HOSTNAME
 try {
-    & $python @argumentos
+    if ($Supabase -and -not $hostAnterior) {
+        # La siembra por CLI no escucha HTTP ni publica este hostname.
+        $env:RENDER_EXTERNAL_HOSTNAME = 'sigelc-provision.onrender.com'
+    }
+    & $ejecutable @argumentos
     if ($LASTEXITCODE -ne 0) { throw 'No se pudo provisionar la demo.' }
     if ($generar) {
         # Sin rotación, un usuario existente conserva su contraseña.
         $comprobar = "from django.contrib.auth import authenticate; import os, sys; sys.exit(authenticate(username='abogado-demo', password=os.environ['SIGELC_DEMO_CLAVE_PROVISION']) is None)"
-        & $python manage.py shell --settings=config.settings_demo -c $comprobar
+        & $ejecutable manage.py shell "--settings=$perfil" -c $comprobar
         if ($LASTEXITCODE -ne 0) {
             throw 'La cuenta ya tiene una clave. Use la existente o vuelva a ejecutar con -CambiarClave.'
         }
@@ -51,4 +64,5 @@ try {
 } finally {
     Pop-Location
     [Environment]::SetEnvironmentVariable($variableClave, $null, 'Process')
+    [Environment]::SetEnvironmentVariable('RENDER_EXTERNAL_HOSTNAME', $hostAnterior, 'Process')
 }
