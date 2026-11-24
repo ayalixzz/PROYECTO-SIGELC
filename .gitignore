@@ -11,6 +11,9 @@ staticfiles/
 private_media/
 private_media_demo/
 staticfiles_demo/
+private_media_supabase/
+staticfiles_supabase/
+prod-supabase.cer
 *.dpapi
 *.log
 .DS_Store

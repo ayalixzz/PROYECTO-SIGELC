@@ -2,7 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-const django = { target: 'http://127.0.0.1:8001', changeOrigin: false }
+const backendPort = Number(process.env.SIGELC_BACKEND_PORT ?? '8001')
+if (!Number.isInteger(backendPort) || backendPort < 1024 || backendPort > 65535) {
+  throw new Error('SIGELC_BACKEND_PORT debe ser un puerto entre 1024 y 65535.')
+}
+const django = { target: `http://127.0.0.1:${backendPort}`, changeOrigin: false }
 const local = {
   host: '127.0.0.1',
   port: 5173,

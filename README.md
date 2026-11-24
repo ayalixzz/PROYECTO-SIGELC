@@ -76,3 +76,32 @@ Las pruebas de las muestras ficticias pueden ejecutarse sin una conexión a Post
 Instale opcionalmente `backend/requirements-mcp.txt` en el entorno virtual para probar MCP. Use las entregas ficticias revisadas y sus IDs en la ficha. `scripts/configurar-claude-mcp.ps1` prepara el conector local. El arranque remoto es independiente y su modo predeterminado es de solo lectura. Para recibir propuestas, el piloto requiere `-PermitirPropuestas` en `iniciar-mcp-remoto.ps1`, los mismos IDs aprobados en ambos lanzadores y consentimiento OAuth adicional.
 
 GitHub aloja el código para revisión. Para que otro equipo abra SIGELC como aplicación web se necesita un servidor de demo separado con Django y PostgreSQL. La aprobación del piloto confirma el recorrido con datos ficticios. La adopción con datos reales requiere importar y conciliar el histórico, validar las reglas institucionales y probar el respaldo y la restauración.
+
+## PostgreSQL de Supabase para revisión
+
+El perfil `config.settings_supabase` conecta Django al **Session pooler** de un proyecto de Supabase con TLS verificado. Mantén el esquema `sigelc_demo` fuera de los esquemas expuestos por la Data API. La cuenta de aplicación `sigelc_demo_app` puede crear y consultar tablas de ese esquema. Django bloquea las pruebas automatizadas contra esta base.
+
+1. Descarga el certificado CA en los ajustes de la base de tu proyecto y copia el **host** y la **referencia del proyecto** desde **Connect → Session pooler**. La referencia aparece después de `postgres.` en el usuario del pooler. [Guía de Supabase](https://supabase.com/docs/guides/database/psql)
+2. Desde la raíz del repositorio ejecuta el asistente con tus valores. La contraseña de PostgreSQL se escribe en el prompt oculto. El asistente usa esa contraseña una vez para crear el rol y el esquema, y guarda las credenciales de aplicación en `backend/.env.supabase`, excluido de Git.
+
+   ```powershell
+   .\backend\.venv\Scripts\python.exe .\scripts\configurar-supabase.py --host HOST_DEL_POOLER --proyecto REFERENCIA_DEL_PROYECTO
+   ```
+
+3. Tras confirmar la conexión, revisa el plan de migraciones y aplícalo al esquema privado. Desde `backend` ejecuta:
+
+   ```powershell
+   .\.venv\Scripts\python.exe manage.py check --database default --settings=config.settings_supabase
+   .\.venv\Scripts\python.exe manage.py migrate --plan --settings=config.settings_supabase
+   .\.venv\Scripts\python.exe manage.py migrate --settings=config.settings_supabase
+   .\.venv\Scripts\python.exe manage.py showmigrations --settings=config.settings_supabase
+   ```
+
+4. Para abrir una sesión de revisión, crea la cuenta con `manage.py crear_abogado --usuario abogado-demo --settings=config.settings_supabase` y arranca Django con `manage.py runserver 127.0.0.1:8002 --settings=config.settings_supabase`. En otra terminal, desde `frontend`:
+
+   ```powershell
+   $env:SIGELC_BACKEND_PORT = '8002'
+   npm.cmd run dev -- --port 5175
+   ```
+
+   Abre [SIGELC con Supabase](http://127.0.0.1:5175/). El perfil inicial tiene un esquema nuevo. El asistente no importa los expedientes existentes. Django guarda los documentos en el servidor que lo ejecuta, en `backend/private_media_supabase`. El conector MCP sigue usando el entorno de demo local.
