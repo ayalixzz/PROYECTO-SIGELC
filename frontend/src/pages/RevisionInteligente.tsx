@@ -96,7 +96,7 @@ type Revision = RevisionFila & {
   motivo_generacion: string
   plazo_dias_habiles: number | null
   proveedor_externo?: { nombre: 'openai' | 'anthropic'; modelo: string } | null
-  claude?: { puede_consultar: boolean; puede_solicitar: boolean; solicitud: SolicitudClaude | null } | null
+  claude?: { puede_consultar: boolean; puede_solicitar: boolean; solicitud: SolicitudClaude | null; conector_url?: string } | null
 }
 type ResultadoOperacion = { tipo: 'exito' | 'error' | 'aviso'; mensaje: string }
 type Ejecutar = (endpoint: string, body: Registro, success: string | ((resultado: Revision) => ResultadoOperacion)) => Promise<boolean>
@@ -627,6 +627,13 @@ function RevisionClaude({ contrato, revision, busy, ejecutar, recargar, abrir }:
     )
     return <section className="ri-mode ri-stack" aria-label="Consulta en Claude">
       <p>Las observaciones de esta consulta se muestran en Claude.</p>
+      {claude.conector_url && <details>
+        <summary>Configurar conector SIGELC en Claude</summary>
+        <p>En Claude, abre Personalizar → Conectores → Agregar conector personalizado. Pega esta URL y autoriza el acceso con tu cuenta SIGELC.</p>
+        <input aria-label="URL del conector SIGELC" className="input" value={claude.conector_url} readOnly
+          onFocus={(event) => event.currentTarget.select()} />
+        <p>Activa el conector en el chat antes de enviar la consulta.</p>
+      </details>}
       <div><a className="button button-secondary" href={`claude://claude.ai/new?q=${consulta}`}>
         <Icon name="arrow" size={17} />Consultar en Claude
       </a></div>

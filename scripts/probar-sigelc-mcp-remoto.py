@@ -85,10 +85,13 @@ class Piloto:
             for clave in ('registration', 'authorization', 'token', 'revocation')
         }
 
-    async def verificar_perimetro(self):
-        for ruta in ('/admin/', '/api/contratos/', '/static/', '/media/', '/private_media_demo/', '/vite/'):
+    async def verificar_perimetro(self, *, mismo_origen=False):
+        for ruta in ('/admin/', '/static/', '/media/', '/private_media_demo/', '/vite/'):
             respuesta = await self.cliente.get(self.url_local(ruta))
             exigir(respuesta.status_code == 404, f'La ruta interna {ruta} no está cerrada.')
+        contratos = await self.cliente.get(self.url_local('/api/contratos/'))
+        exigir(contratos.status_code in ((401, 403) if mismo_origen else (404,)),
+               'Django permitió consultar contratos sin una sesión de SIGELC.')
         for encabezados in ({'Host': 'otro.example.invalid'}, {'Origin': 'https://otro.example.invalid'}):
             respuesta = await self.cliente.get(self.recurso, headers=encabezados)
             exigir(respuesta.status_code in (400, 403, 421), 'No se rechazó un Host u Origin ajeno.')
@@ -299,7 +302,7 @@ async def probar(args):
     async with httpx.AsyncClient(verify=tls, follow_redirects=False, trust_env=False, timeout=20) as cliente:
         piloto = Piloto(cliente, base, args.callback)
         await piloto.descubrir()
-        await piloto.verificar_perimetro()
+        await piloto.verificar_perimetro(mismo_origen=args.mismo_origen)
         await piloto.registrar()
         await piloto.autorizar('sigelc-usuario-ficticio-inexistente', None)
         contrasena = os.environ.pop('SIGELC_MCP_PRUEBA_PASSWORD', '') or getpass('Contraseña de la cuenta ficticia: ')
@@ -350,6 +353,8 @@ if __name__ == '__main__':
     parser.add_argument('--ca', type=Path, help='Certificado PEM de confianza para una prueba HTTPS local.')
     parser.add_argument('--callback', default=CALLBACK, help='URI ya permitida por el servidor. Nunca se sigue el callback.')
     parser.add_argument('--usuario', default='abogado-demo')
+    parser.add_argument('--mismo-origen', action='store_true',
+                        help='Verifica el entorno hospedado donde Django y MCP comparten dominio.')
     parser.add_argument('--esperar-expiracion', action='store_true')
     parser.add_argument('--probar-frecuencia', action='store_true',
                         help='Comprueba el 429 de registro, al final y en un servidor local de ensayo.')

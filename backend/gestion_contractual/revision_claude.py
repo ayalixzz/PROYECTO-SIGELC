@@ -7,7 +7,10 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .mcp_demo import NUMERO, expediente_ficticio, validar_propuestas, verificar_base
+from .mcp_demo import (
+    NIT_DEMO, NUMERO, OPERACIONES_HOSPEDADAS, PERFIL_HOSPEDADO,
+    expediente_ficticio, validar_propuestas, verificar_base,
+)
 from .revision_flujo import _contrato, _evento, _preexistente, huella
 
 SOLICITUD = 'mcp_solicitud'
@@ -52,14 +55,23 @@ def _solicitudes(revision, usuario):
 
 
 def estado_claude(revision, usuario, *, analizada, es_vigente, puede_decidir):
+    entorno_hospedado = settings.SETTINGS_MODULE == PERFIL_HOSPEDADO
     puede_consultar = (
         getattr(settings, 'SIGELC_DEMO', False)
-        and getattr(settings, 'SIGELC_CLAUDE_CONSULTA_LOCAL', False)
+        and (entorno_hospedado or getattr(settings, 'SIGELC_CLAUDE_CONSULTA_LOCAL', False))
         and revision.contrato.numero_contrato == NUMERO
         and revision.contrato.contratista_identificacion == 'FICTICIO-001'
-        and revision.contrato.entidad.nit == 'SIGELC-DEMO-000'
+        and revision.contrato.entidad.nit == NIT_DEMO
         and revision.version in (1, 2)
     )
+    if entorno_hospedado and puede_consultar:
+        if (revision.pk not in settings.SIGELC_MCP_ENTREGAS
+                or (revision.version, revision.operacion) not in OPERACIONES_HOSPEDADAS):
+            return None
+        return {
+            'puede_consultar': True, 'puede_solicitar': False, 'solicitud': None,
+            'conector_url': f'https://{settings.ALLOWED_HOSTS[0]}/mcp',
+        }
     if not _habilitada(revision):
         if not puede_consultar:
             return None

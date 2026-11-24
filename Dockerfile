@@ -20,4 +20,4 @@ COPY backend/gestion_contractual ./gestion_contractual
 COPY --from=frontend /app/frontend/dist /app/frontend/dist
 USER sigelc
 EXPOSE 10000
-CMD ["sh", "-ec", "python manage.py migrate --check && exec gunicorn --bind \"0.0.0.0:${PORT:-10000}\" --workers 1 --threads 4 --timeout 90 config.wsgi:application"]
+CMD ["sh", "-ec", "python manage.py migrate --check && exec uvicorn config.asgi_hospedado:application --host 0.0.0.0 --port \"${PORT:-10000}\" --workers 1 --no-proxy-headers --no-access-log --no-server-header"]

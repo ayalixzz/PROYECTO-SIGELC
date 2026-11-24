@@ -104,7 +104,7 @@ El perfil `config.settings_supabase` conecta Django al **Session pooler** de un 
    npm.cmd run dev -- --port 5175
    ```
 
-   Abre [SIGELC con Supabase](http://127.0.0.1:5175/). El perfil inicial tiene un esquema nuevo. El asistente no importa los expedientes existentes. El acceso local con Supabase y el servicio de Render comparten los documentos privados del esquema `sigelc_demo`. El conector MCP sigue usando el entorno de demo local.
+   Abre [SIGELC con Supabase](http://127.0.0.1:5175/). El perfil inicial tiene un esquema nuevo. El asistente no importa los expedientes existentes. El acceso local con Supabase y el servicio de Render comparten los documentos privados del esquema `sigelc_demo`. El conector MCP de Windows conserva su propia base de demo local.
 
 ## Demo web en Render
 
@@ -121,3 +121,17 @@ El `Dockerfile` compila React y lo sirve junto a Django mediante HTTPS desde un 
    La segunda línea coloca la clave generada de `abogado-demo` temporalmente en el portapapeles del usuario que la creó. La copia cifrada queda en el computador, fuera de Git. Guarda los datos de acceso del cliente en un canal privado.
 3. Crea el servicio Docker desde el repositorio o configura el Blueprint en Render. Introduce `SIGELC_SUPABASE_HOST`, `SIGELC_SUPABASE_USER` y `SIGELC_SUPABASE_PASSWORD` mediante las variables privadas del servicio. Usa una nueva `SIGELC_SUPABASE_SECRET_KEY` para HTTPS. El certificado CA incluido proviene de la distribución oficial de Supabase. [Conexión SSL](https://supabase.com/docs/guides/database/psql)
 4. Abre el dominio HTTPS del servicio, verifica `/api/health/` e inicia sesión como `abogado-demo`. Comprueba un expediente, su historial y un documento ficticio. El plan gratuito puede tardar en reactivarse tras un período sin tráfico. [Límites del plan](https://render.com/docs/free)
+
+### Claude Desktop Pro en Render
+
+Cuando el conector de la demo esté desplegado, Claude puede consultar en modo de solo lectura las dos entregas ficticias preparadas de `SIGELC-DEMO-001` en Supabase. La conversación usa la cuenta Claude del cliente y el conector se autoriza con el usuario de la demo SIGELC.
+
+El responsable del despliegue configura `SIGELC_MCP_ENTREGAS` en Render con los IDs de las muestras aprobadas, separados por comas. En este piloto son `1,2`. El servidor verifica que correspondan a las dos cargas ficticias originales antes de activar el endpoint. Con la variable vacía, el conector queda deshabilitado.
+
+1. En Claude Desktop, abre **Customize → Connectors → + Add → Add custom connector**. Escribe **SIGELC Demo** y la URL `https://sigelc-revision.onrender.com/mcp`.
+2. Elige **Sign in now** y **Register automatically** para OAuth. En la página de SIGELC, inicia sesión con `abogado-demo` y aprueba el permiso de lectura.
+3. En una conversación, activa **SIGELC Demo** desde **+ → Connectors**. Prueba este mensaje:
+
+   > Usa el conector SIGELC Demo para comparar las entregas 1 y 2 de SIGELC-DEMO-001. Indica qué se corrigió y qué sigue pendiente. Incluye documento, ubicación, evidencia y fundamento verificable para cada observación.
+
+Confirma la conexión cuando Claude liste las herramientas y responda con datos del expediente. Si la demo tarda en cargar, espera a que abra la web de SIGELC antes de conectar. Si Render recicla el proceso, su estado OAuth en memoria se pierde y puede ser necesario quitar y volver a agregar el conector. El análisis se ejecuta en la conversación de Claude y usa la suscripción del cliente, sin contratar la API de Anthropic. [Guía de conectores remotos de Claude](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)

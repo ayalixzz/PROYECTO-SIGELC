@@ -1,3 +1,4 @@
 -r requirements.txt
-gunicorn==27.0.1
+mcp==1.28.0
+uvicorn==0.54.0
 whitenoise==6.12.0

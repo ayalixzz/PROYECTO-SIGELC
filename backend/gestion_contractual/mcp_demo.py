@@ -1,8 +1,8 @@
-"""Local scopes and evidence validation for the isolated Claude connector."""
+"""Scopes and evidence validation for the isolated Claude connector."""
 
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -20,14 +20,38 @@ ARCHIVO_AUTORIZACION = Path(settings.BASE_DIR) / '.sigelc-mcp.dpapi'
 SALT = 'sigelc.mcp.demo.v1'
 VIGENCIA = 8 * 3600
 NUMERO = 'SIGELC-DEMO-001'
+NIT_DEMO = 'SIGELC-DEMO-000'
+PERFIL_HOSPEDADO = 'config.settings_hospedado'
 PERMISOS = ('gestion_contractual.view_contrato', 'gestion_contractual.view_documentocontrato')
+# Identificadores de operación de las dos cargas ficticias iniciales de Render.
+OPERACIONES_HOSPEDADAS = frozenset(
+    (version, uuid5(NAMESPACE_URL, f'urn:sigelc:demo:v1:hospedada-paquete-{version}'))
+    for version in (1, 2)
+)
 
 
 def verificar_base():
+    if not getattr(settings, 'SIGELC_DEMO', False):
+        raise ValidationError('Se requiere la configuración PostgreSQL aislada de la demo.')
+    motor = connection.settings_dict['ENGINE']
+    if settings.SETTINGS_MODULE == PERFIL_HOSPEDADO:
+        from config.postgres_supabase import DATABASE_NAME, DATABASE_ROLE, SCHEMA
+
+        entregas = getattr(settings, 'SIGELC_MCP_ENTREGAS', ())
+        if (motor != 'config.postgres_supabase' or settings.DEBUG
+                or not 1 <= len(entregas) <= 4 or len(entregas) != len(set(entregas))
+                or any(type(pk) is not int or pk <= 0 for pk in entregas)):
+            raise ValidationError('El conector hospedado requiere Supabase aislado y entregas autorizadas.')
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT current_database(), current_user, current_schema()')
+            if (cursor.fetchone() != (DATABASE_NAME, DATABASE_ROLE, SCHEMA)
+                    or not connection.connection.pgconn.ssl_in_use):
+                raise ValidationError('La identidad o TLS de la base hospedada no coincide.')
+        return
+    if motor != 'config.postgres_demo':
+        raise ValidationError('Se requiere la configuración PostgreSQL aislada de la demo.')
     from config.postgres_demo import DATABASE_NAME, DATABASE_OID
 
-    if not getattr(settings, 'SIGELC_DEMO', False) or connection.settings_dict['ENGINE'] != 'config.postgres_demo':
-        raise ValidationError('Se requiere la configuración PostgreSQL aislada de la demo.')
     with connection.cursor() as cursor:
         cursor.execute('SELECT current_database(), oid FROM pg_database WHERE datname = current_database()')
         if cursor.fetchone() != (DATABASE_NAME, DATABASE_OID):
@@ -65,18 +89,29 @@ def guardar_autorizacion(permiso):
 def expediente_ficticio(usuario):
     if not es_abogado_operativo(usuario) or usuario.is_superuser or not usuario.has_perms(PERMISOS):
         raise ValidationError('El abogado operativo carece de acceso al conector.')
-    contrato = Contrato.objects.filter(
+    candidatos = Contrato.objects.filter(
         abogado_responsable=usuario, numero_contrato=NUMERO, contratista_identificacion='FICTICIO-001',
-    ).select_related('estado_actual').first()
-    if not contrato or not Auditoria.objects.filter(
+    )
+    hospedado = settings.SETTINGS_MODULE == PERFIL_HOSPEDADO
+    if hospedado:
+        candidatos = candidatos.filter(entidad__nit=NIT_DEMO)
+    contrato = candidatos.select_related('estado_actual').first()
+    if not contrato:
+        raise ValidationError('No se encontró el expediente ficticio provisionado para este usuario.')
+    auditoria = Auditoria.objects.filter(
         usuario=usuario, accion='registrar_expediente_demo', entidad_afectada='Contrato',
         identificador_registro=str(contrato.pk),
-    ).exists():
+    )
+    if hospedado:
+        auditoria = auditoria.filter(datos_nuevos__identificador_demo=NUMERO)
+    if not auditoria.exists():
         raise ValidationError('No se encontró el expediente ficticio provisionado para este usuario.')
     return contrato
 
 
 def acceso():
+    if connection.settings_dict['ENGINE'] != 'config.postgres_demo':
+        raise ValidationError('La autorización DPAPI se usa exclusivamente con la demo local de Windows.')
     verificar_base()
     credencial = leer_autorizacion()
     try:
@@ -90,6 +125,12 @@ def acceso():
     if contrato.pk != permiso['contrato'] or contrato.version_registro != permiso['version_contrato']:
         raise ValidationError('El expediente cambió. Autorice nuevamente los datos de la demo.')
     return usuario, contrato, permiso
+
+
+def verificar_entregas_hospedadas(contrato, entregas):
+    filas = set(contrato.revisiones_inteligentes.filter(pk__in=entregas).values_list('version', 'operacion'))
+    if len(filas) != len(entregas) or not filas.issubset(OPERACIONES_HOSPEDADAS):
+        raise ValidationError('Solo se admiten las entregas ficticias originales de la demo hospedada.')
 
 
 def entrega(contrato, permiso, entrega_id):
