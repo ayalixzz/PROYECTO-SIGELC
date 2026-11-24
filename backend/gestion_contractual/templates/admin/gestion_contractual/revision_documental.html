@@ -1,0 +1,26 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Contrato {{ contrato }} · <a href="{% url 'admin:gestion_contractual_requerimientos' contrato.pk %}?tipo=observaciones">Preparar borrador de observaciones</a></p>
+<h2>Requisitos aplicables</h2>
+{% if resumen.aviso %}<p>{{ resumen.aviso }}</p>{% endif %}
+<ul>{% for requisito in resumen.requisitos %}<li>{{ requisito.tipo }} · {{ requisito.estado }}</li>{% endfor %}</ul>
+<h2>Soportes y versiones</h2>
+<ul>{% for soporte in soportes %}
+<li>{% if soporte.activo %}<a href="{% url 'descargar_documento' soporte.pk %}">{{ soporte }}</a>{% else %}{{ soporte }} (inactivo){% endif %}
+ · v{{ soporte.version }} · {{ soporte.get_estado_revision_display }}{% if soporte.anterior_id %} · Reemplaza #{{ soporte.anterior_id }}{% endif %}</li>
+{% empty %}<li>Sin soportes registrados.</li>{% endfor %}</ul>
+<h2>Historial de observaciones</h2>
+<ol>{% for observacion in observaciones %}
+<li>#{{ observacion.pk }} · {{ observacion.get_tipo_display }} · {{ observacion.get_estado_revision_display }} · {{ observacion.responsable }} · {{ observacion.registrada_en }}
+<p>{{ observacion.descripcion|linebreaksbr }}</p>
+{% if observacion.evidencia %}<p>Evidencia: {{ observacion.evidencia|linebreaksbr }}</p>{% endif %}
+{% if observacion.anterior_id %}<p>Rectifica #{{ observacion.anterior_id }} · {{ observacion.motivo }}</p>{% endif %}
+{% for documento in observacion.documentos.all %}<span>Soporte #{{ documento.pk }} {{ documento }}</span>{% endfor %}
+</li>{% empty %}<li>Sin observaciones registradas.</li>{% endfor %}</ol>
+{% for accion, titulo, form in formularios %}
+<h2>{{ titulo }}</h2>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}
+<button name="accion" value="{{ accion }}">Guardar</button>
+</form>
+{% endfor %}
+{% endblock %}

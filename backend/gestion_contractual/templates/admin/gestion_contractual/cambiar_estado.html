@@ -1,0 +1,6 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Contrato: {{ contrato }}. Estado actual: {{ contrato.estado_actual }}.</p>
+{% if iniciando %}<p>Fecha real de asignación: {{ contrato.fecha_asignacion|default:"Sin registrar" }}.</p>{% endif %}
+<form method="post">{% csrf_token %}{{ form.as_p }}<input type="submit" value="{% if iniciando %}Iniciar seguimiento{% else %}Confirmar cambio{% endif %}"></form>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "admin/base_site.html" %}{% block content %}
+<p>Contrato {{ contrato }} · <a href="{% url 'admin:gestion_contractual_contrato_change' contrato.pk %}">Volver al expediente</a></p>
+<p>BORRADOR — PENDIENTE DE REVISIÓN JURÍDICA Y FINANCIERA. No formaliza la liquidación, las firmas, los acuerdos ni el paz y salvo.</p>
+<h2>Seleccionar plantilla aplicable</h2>
+<p><a href="{{ url_plantillas }}">Consultar e incorporar plantillas versionadas</a></p>
+<ul>{% for p in plantillas %}<li><a href="{{ generar_url }}?tipo_acta={{ p.tipo_acta_id }}&amp;plantilla={{ p.pk }}">{{ p }}</a> · Revise su aplicabilidad contractual antes de seleccionar.</li>{% empty %}<li>Pendiente plantilla de liquidación activa; no se activa ninguna en la base principal.</li>{% endfor %}</ul>
+<h2>Advertencias y revisión previa</h2><ul>{% for aviso in panorama.advertencias %}<li>{{ aviso }}</li>{% endfor %}</ul>
+<p>Auxiliar de pagos: {{ panorama.auxiliar_pagos.valor|default_if_none:"Pendiente; no se presume cero" }}.<br>{{ panorama.auxiliar_pagos.formula }}</p>
+<p>Solo los registros verificados con fuente se incorporan como datos del acta. Una factura revisada sigue siendo factura. Las declaraciones revisadas se mantienen como propuestas pendientes de adopción y suscripción.</p>
+{% if puede_registrar %}{% for tipo,titulo,form in formularios %}
+<details><summary>Registrar o rectificar {{ titulo }}</summary><form method="post">{% csrf_token %}<input type="hidden" name="tipo" value="{{ tipo }}">{{ form.as_p }}<button>Guardar versión</button></form></details>
+{% endfor %}{% endif %}
+{% for tipo,filas in historiales %}<h2>Historial {{ tipo }}</h2><ul>{% for fila in filas %}<li>{{ fila }} · {{ fila.registrado_en }} · {{ fila.responsable }}<br>Fundamento: {{ fila.fundamento|default:"Pendiente" }} · Validado por: {{ fila.validado_por|default:"Pendiente" }} · {{ fila.validado_en|default:"Pendiente" }}<br>Motivo: {{ fila.motivo|default:"Registro inicial" }}
+{% if fila.documento_id %} · <a href="{% url 'descargar_documento' fila.documento_id %}">{{ fila.documento.nombre_original }}</a>{% endif %}
+<details><summary>Datos registrados de esta versión</summary>{% if tipo == 'garantia' %}<p>{{ fila.seccion }} · {{ fila.aseguradora }} · Póliza {{ fila.poliza }} · Anexo {{ fila.anexo }} · {{ fila.amparo }} · {{ fila.valor_asegurado|default_if_none:"Pendiente" }} · {{ fila.vigencia_inicio }} a {{ fila.vigencia_fin }} · Expedición {{ fila.fecha_expedicion }} · Aprobación {{ fila.fecha_aprobacion }}</p>{% elif tipo == 'pago' %}<p>{{ fila.get_naturaleza_display }} · {{ fila.referencia }} · {{ fila.rubro }} · Orden {{ fila.orden }} · {{ fila.fecha }} · {{ fila.valor|default_if_none:"Pendiente" }} · {{ fila.certificador }} · {{ fila.fecha_certificacion }}</p>{% else %}<p>{{ fila.clase }} · {{ fila.texto|linebreaksbr }} · {{ fila.valor|default_if_none:"Sin valor registrado" }} · Emisor {{ fila.emisor }} · {{ fila.fecha_fuente }}</p>{% endif %}</details>
+{% if perms.gestion_contractual.view_auditoria %}<a href="{{ auditoria_url }}?q={{ fila.pk }}">Consultar auditoría</a>{% endif %}</li>{% empty %}<li>Sin registros.</li>{% endfor %}</ul>{% endfor %}
+{% endblock %}

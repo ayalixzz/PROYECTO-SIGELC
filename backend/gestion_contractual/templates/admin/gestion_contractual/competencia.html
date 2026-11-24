@@ -1,0 +1,33 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Contrato {{ contrato }} · Terminación contractual {{ contrato.fecha_terminacion|default:"Sin registrar" }}</p>
+{% if insumos_desactualizados %}<p>Los datos actuales cambiaron. Genere una nueva propuesta.</p>{% endif %}
+<h2>Versiones del cálculo</h2>
+{% if vigencia_calendario %}<p><strong>Vigencia de calendario: {{ vigencia_calendario.clasificacion }}</strong> · {{ vigencia_calendario.motivo }}</p>{% endif %}
+{% for version in versiones %}
+<details{% if forloop.first %} open{% endif %}>
+<summary>Versión {{ version.version }} · {{ version.get_estado_display }} · {{ version.creado_en }}</summary>
+<dl>
+<dt>Fecha base</dt><dd>{{ version.resultado.fecha_base|default:"Sin determinar" }}</dd>
+<dt>Vencimiento bilateral</dt><dd>{{ version.resultado.fin_bilateral|default:"Sin determinar" }}</dd>
+<dt>Vencimiento unilateral</dt><dd>{{ version.resultado.fin_unilateral|default:"Sin determinar" }}</dd>
+<dt>Inicio judicial</dt><dd>{{ version.resultado.inicio_judicial|default:"Sin determinar" }}</dd>
+<dt>Vencimiento judicial</dt><dd>{{ version.resultado.fin_judicial|default:"Sin determinar" }}</dd>
+<dt>Límite estimado para liquidar</dt><dd>{{ version.resultado.limite_competencia|default:"Sin determinar" }}</dd>
+</dl>
+<p>Solicitante {{ version.creado_por }} · Cálculo {{ version.calculado_en }}</p>
+{% if version.verificado_por %}<p>Verificó {{ version.verificado_por }} el {{ version.verificado_en }} · {{ version.fundamento_verificacion }}</p>{% endif %}
+{% if version.motivo_rectificacion %}<p>Motivo: {{ version.motivo_rectificacion }}</p>{% endif %}
+{% if version.cambios %}<p>Datos modificados: {{ version.cambios|join:", " }}</p>{% endif %}
+<ul>{% for regla in version.resultado.reglas %}<li>{{ regla }}</li>{% endfor %}
+{% for alerta in version.resultado.advertencias %}<li>{{ alerta }}</li>{% endfor %}
+{% for alerta in version.resultado.advertencias_calendario %}<li>{{ alerta }}</li>{% endfor %}
+{% for faltante in version.resultado.faltantes %}<li>Pendiente: {{ faltante }}</li>{% endfor %}</ul>
+<ul>{% for titulo, url in version.resultado.fuentes.items %}<li><a href="{{ url }}">{{ titulo }}</a></li>{% endfor %}</ul>
+</details>
+{% empty %}<p>Aún no hay cálculos registrados.</p>{% endfor %}
+{% for accion, titulo, form in formularios %}
+<h2>{{ titulo }}</h2>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button name="accion" value="{{ accion }}">Guardar</button></form>
+{% endfor %}
+{% endblock %}

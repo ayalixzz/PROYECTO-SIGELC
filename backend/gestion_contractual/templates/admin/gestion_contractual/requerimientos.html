@@ -1,0 +1,93 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+{% if contrato %}
+<p>Contrato {{ contrato }} · <a href="{{ url_plantillas }}">Plantillas documentales</a></p>
+{% if etapa_requerimiento %}<p>Etapa vigente: {{ etapa_requerimiento }} · Plantilla disponible: {{ plantilla_etapa|default:"Pendiente de incorporar" }}.</p>
+<p>Seleccione el requerimiento de la etapa vigente. La generación guarda un borrador; no avanza el expediente ni envía comunicaciones.</p>{% endif %}
+<p>Para revisar un borrador, descárguelo, edítelo en Word y cargue el DOCX con el ID de la última versión de su tipo.</p>
+<ul>
+{% for borrador in borradores %}
+<li><a href="{% url 'descargar_documento' borrador.documento_id %}">{{ borrador.get_tipo_display }} v{{ borrador.version }}</a>
+ · ID {{ borrador.pk }} · Plantilla {{ borrador.plantilla }} · {{ borrador.get_estado_revision_display|default:borrador.estado_revision }}
+ {% if borrador.plantilla.tipo_acta_id %}· BORRADOR — PENDIENTE DE REVISIÓN JURÍDICA{% endif %}
+ {% if borrador.plantilla.ficticia %}· DOCUMENTO FICTICIO NO INSTITUCIONAL{% endif %}
+ {% if borrador.calculo_competencia_id %}· Cálculo v{{ borrador.calculo_competencia.version }}{% if borrador.calculo_competencia_id != calculo_vigente_id %} (referencia histórica, revisar vigencia){% endif %}{% endif %}
+ {% if borrador.motivo_revision %}· Motivo: {{ borrador.motivo_revision }}{% endif %}
+ {% if perms.gestion_contractual.view_auditoria %}· <a href="{{ auditoria_url }}?entidad_afectada=DocumentoGenerado&amp;q={{ borrador.pk }}">Auditoría</a>{% endif %}
+ {% if borrador.campos_pendientes %}· Campos pendientes de la generación original: {{ borrador.campos_pendientes|join:", " }}{% endif %}
+ {% if borrador.datos_utilizados.liquidacion_institucional %}<details><summary>Instantánea del acta institucional de liquidación</summary>
+ <p>BORRADOR — PENDIENTE DE REVISIÓN JURÍDICA Y FINANCIERA · {{ borrador.documento.fecha_carga }} · {{ borrador.documento.cargado_por }}</p>
+ <p>{{ borrador.datos_utilizados.revision_manual }}</p>
+ {% for g in borrador.datos_utilizados.insumos_liquidacion.garantias %}<p>Garantía #{{ g.id }} v{{ g.version }} · {{ g.seccion }} · {{ g.poliza }} · Anexo {{ g.anexo }} · {{ g.amparo }} · {{ g.estado }} · Fuente #{{ g.documento }}</p>{% endfor %}
+ {% for p in borrador.datos_utilizados.insumos_liquidacion.pagos %}<p>Registro #{{ p.id }} v{{ p.version }} · {{ p.naturaleza }} · {{ p.referencia }} · {{ p.valor|default_if_none:"Pendiente" }} · {{ p.estado }} · Fuente #{{ p.documento }}</p>{% endfor %}
+ {% for d in borrador.datos_utilizados.insumos_liquidacion.datos %}<p>{{ d.clase }} · {{ d.clave }} #{{ d.id }} v{{ d.version }} · {{ d.valor|default_if_none:"" }} {{ d.texto|linebreaksbr }} · {{ d.estado }} · Fuente #{{ d.documento }} · Validador #{{ d.validado_por }} · {{ d.validado_en }}</p>{% endfor %}
+ <p>{{ borrador.datos_utilizados.insumos_liquidacion.auxiliar_pagos.formula }} · {{ borrador.datos_utilizados.insumos_liquidacion.auxiliar_pagos.valor|default_if_none:"Pendiente" }}</p>
+ {% for aviso in borrador.datos_utilizados.insumos_liquidacion.advertencias %}<p>{{ aviso }}</p>{% endfor %}
+ </details>{% endif %}
+ {% if borrador.datos_utilizados.gcof19 %}<details><summary>Instantánea histórica GCOF19</summary>
+ <p>{{ borrador.documento.fecha_carga }} · {{ borrador.documento.cargado_por }} · {{ borrador.datos_utilizados.revision_manual }}</p>
+ {% for ob in borrador.datos_utilizados.obligaciones %}<p>#{{ ob.id }} · {{ ob.tipo }} {{ ob.numero }} v{{ ob.version }} · {{ ob.estado_verificacion }}<br>{{ ob.descripcion }}<br>Actividad: {{ ob.actividad|default:"Pendiente" }}<br>Producto: {{ ob.producto|default:"Pendiente" }}<br>Comentario aportado: {{ ob.comentario_supervisor|default:"Pendiente" }} · Atribución verificada: {{ ob.comentario_verificado|yesno:"Sí,No" }}<br>Porcentaje: {{ ob.porcentaje|default_if_none:"Pendiente" }}</p>
+ <ul>{% for d in ob.documentos %}<li><a href="{% url 'descargar_documento' d.id %}">{{ d.nombre }}</a> v{{ d.version }}</li>{% endfor %}</ul>
+ <p>Hallazgos del abogado: {% for o in ob.observaciones_abogado %}#{{ o.id }} {{ o.descripcion }}; {% empty %}sin referencias{% endfor %}</p>
+ {% empty %}<p>Obligaciones pendientes de registro.</p>{% endfor %}</details>{% endif %}
+ {% if borrador.datos_utilizados.acta_observaciones_institucional %}
+ <details><summary>Información conservada en esta versión del acta</summary>
+ <p>Generación: {{ borrador.documento.fecha_carga }} · {{ borrador.documento.cargado_por }}.</p>
+ {% if borrador.datos_utilizados.revision_manual %}<p>{{ borrador.datos_utilizados.revision_manual }}</p>{% endif %}
+ {% for obs in borrador.datos_utilizados.expediente_observaciones.observaciones %}
+ <p>Observación #{{ obs.id }} · {{ obs.tipo_nombre }} · {{ obs.revision_nombre }}<br>{{ obs.descripcion|linebreaksbr }}<br>
+ Evidencia registrada: {{ obs.evidencia|default:"Pendiente"|linebreaksbr }}<br>{{ obs.fecha_registro }} · {{ obs.responsable }}</p>
+ <ul>{% for doc in obs.documentos %}<li><a href="{% url 'descargar_documento' doc.id %}">{{ doc.nombre }}</a> · v{{ doc.version }} · {{ doc.revision }}</li>{% empty %}<li>Soporte asociado pendiente.</li>{% endfor %}</ul>
+ <details><summary>Rectificaciones conservadas</summary>{% for h in obs.historial_rectificaciones %}
+ <p>#{{ h.id }} · {{ h.fecha_registro }} · {{ h.responsable }} · {{ h.revision_nombre }}<br>{{ h.descripcion|linebreaksbr }}<br>{{ h.evidencia|linebreaksbr }}<br>{{ h.motivo|linebreaksbr }}</p>
+ {% endfor %}</details>
+ {% empty %}<p>Sin observaciones incorporadas.</p>{% endfor %}
+ </details>{% endif %}</li>
+{% empty %}<li>Aún no hay borradores guardados.</li>{% endfor %}
+</ul>
+{% else %}
+<ul>
+{% for plantilla in plantillas %}
+<li>{{ plantilla.get_tipo_display }} · {{ plantilla }} · {{ plantilla.activa|yesno:"Activa,Inactiva" }}
+{% if puede_activar %}
+<form method="post">{% csrf_token %}<input type="hidden" name="plantilla_id" value="{{ plantilla.pk }}">
+<button name="activar_version" value="{{ plantilla.activa|yesno:'no,si' }}">{{ plantilla.activa|yesno:'Desactivar,Activar' }}</button>
+</form>
+{% endif %}</li>
+{% empty %}<li>Pendiente de plantillas institucionales DOCX.</li>{% endfor %}
+</ul>
+{% endif %}
+{% if campos_acta %}
+<h2>Campos de la plantilla seleccionada</h2>
+<table><thead><tr><th>Campo</th><th>Valor</th><th>Procedencia</th></tr></thead>
+<tbody>{% for campo, valor, fuente in campos_acta %}<tr><td>{{ campo }}</td><td>{{ valor|default_if_none:"Pendiente"|linebreaksbr }}</td><td>{{ fuente }}</td></tr>{% endfor %}</tbody></table>
+{% endif %}
+{% if snapshot_observaciones %}
+<h2>Expediente consultado para el acta de observaciones</h2>
+<p><a href="{{ revision_documental_url }}">Consultar documentos, registrar observaciones y rectificaciones</a></p>
+<ul>{% for doc in snapshot_observaciones.documentos %}
+<li><a href="{% url 'descargar_documento' doc.id %}">{{ doc.nombre }}</a> · v{{ doc.version }} · {{ doc.revision }}</li>
+{% empty %}<li>Pendientes documentos recibidos.</li>{% endfor %}</ul>
+{% for obs in snapshot_observaciones.observaciones %}
+<h3>Observación #{{ obs.id }} · {{ obs.tipo_nombre }} · {{ obs.revision_nombre }}</h3>
+<p>{{ obs.descripcion|linebreaksbr }}</p><p>Evidencia registrada: {{ obs.evidencia|default:"Pendiente"|linebreaksbr }}</p>
+<p>{{ obs.fecha_registro }} · {{ obs.responsable }}</p>
+<ul>{% for doc in obs.documentos %}<li><a href="{% url 'descargar_documento' doc.id %}">{{ doc.nombre }}</a> · v{{ doc.version }} · {{ doc.revision }}</li>{% empty %}<li>Soporte asociado pendiente.</li>{% endfor %}</ul>
+<details><summary>Historial de rectificaciones</summary>{% for anterior in obs.historial_rectificaciones %}
+<p>#{{ anterior.id }} · {{ anterior.fecha_registro }} · {{ anterior.responsable }} · {{ anterior.revision_nombre }}<br>{{ anterior.descripcion|linebreaksbr }}<br>{{ anterior.motivo|linebreaksbr }}</p>
+{% endfor %}</details>
+{% empty %}<p>Pendientes observaciones del abogado.</p>{% endfor %}
+{% endif %}
+{% if snapshot_gcof19 %}
+<h2>Informe final GCOF19</h2><p>BORRADOR — PENDIENTE DE REVISIÓN Y CERTIFICACIÓN POR EL RESPONSABLE COMPETENTE.</p>
+<p><a href="{{ obligaciones_url }}">Consultar, registrar y rectificar obligaciones y soportes</a></p>
+<p>Tipo contractual registrado: {{ snapshot_gcof19.contrato_origen.tipo_contractual }}.</p>
+<ul>{% for ob in snapshot_gcof19.obligaciones %}<li>{{ ob.tipo }} {{ ob.numero }} v{{ ob.version }} · {{ ob.descripcion }} · {{ ob.estado_verificacion }}
+<ul>{% for d in ob.documentos %}<li><a href="{% url 'descargar_documento' d.id %}">{{ d.nombre }}</a> v{{ d.version }}</li>{% empty %}<li>Soportes pendientes.</li>{% endfor %}</ul></li>{% empty %}<li>Obligaciones pendientes de registro.</li>{% endfor %}</ul>
+<p>Pendientes: {{ snapshot_gcof19.pendientes_documentales|join:", " }}.</p>
+{% endif %}
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}
+{% if contrato %}<button name="previsualizar" value="1">Consultar campos antes de generar</button>{% endif %}
+<input type="submit" value="{% if contrato %}Guardar borrador{% else %}Registrar versión{% endif %}">
+</form>
+{% endblock %}

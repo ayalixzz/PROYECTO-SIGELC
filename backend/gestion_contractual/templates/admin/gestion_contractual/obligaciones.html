@@ -1,0 +1,23 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Contrato {{ contrato }} · <a href="{% url 'admin:gestion_contractual_contrato_change' contrato.pk %}">Volver a la ficha</a></p>
+<p>El abogado registra información aportada. La verificación documental no sustituye la certificación del supervisor. Deje vacíos los datos no acreditados.</p>
+{% if perms.gestion_contractual.add_documentocontrato %}<p><a href="{{ generar_url }}">GENERAR INFORME FINAL GCOF19</a> · Consulte los campos antes de guardar el borrador.</p>{% endif %}
+<h2>Obligaciones vigentes</h2>
+<ul>{% for ob in vigentes %}<li>{{ ob }} · {{ ob.descripcion }} · {{ ob.get_estado_verificacion_display }}
+{% if ob.porcentaje is not None %} · {{ ob.porcentaje }} %{% else %} · Porcentaje pendiente{% endif %}
+{% if puede_registrar %} · <a href="?rectificar={{ ob.pk }}">Registrar rectificación</a>{% endif %}</li>
+{% empty %}<li>Pendiente de registrar obligaciones contractuales. No se utilizan las del ejemplo.</li>{% endfor %}</ul>
+{% if puede_registrar %}<h2>Registrar o rectificar obligación</h2>
+<p>Al rectificar conserve número y tipo; indique el motivo. Se guardará una nueva versión sin sobrescribir las anteriores.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Guardar versión de obligación</button></form>{% endif %}
+<h2>Historial de obligaciones y referencias</h2>
+{% for ob in historial %}<details><summary>#{{ ob.pk }} · {{ ob }} · {{ ob.registrada_en }} · {{ ob.responsable }}</summary>
+<p>{{ ob.descripcion|linebreaksbr }}</p><p>Actividad informada: {{ ob.actividad|default:"Pendiente"|linebreaksbr }}<br>Producto informado: {{ ob.producto|default:"Pendiente"|linebreaksbr }}</p>
+<p>Comentario aportado por el supervisor: {{ ob.comentario_supervisor|default:"Pendiente"|linebreaksbr }}<br>Atribución verificada: {{ ob.comentario_verificado|yesno:"Sí,No" }}</p>
+<p>{{ ob.get_estado_verificacion_display }} · Referencia: {{ ob.fundamento|default:"Pendiente"|linebreaksbr }}<br>Motivo de rectificación: {{ ob.motivo|default:"Registro inicial"|linebreaksbr }}</p>
+<ul>{% for d in ob.documentos.all %}<li><a href="{% url 'descargar_documento' d.pk %}">{{ d.nombre_original }}</a> v{{ d.version }}</li>{% empty %}<li>Soportes pendientes.</li>{% endfor %}</ul>
+<p>Hallazgos del abogado, separados de comentarios del supervisor:</p><ul>{% for o in ob.observaciones_abogado.all %}<li>#{{ o.pk }} · {{ o.descripcion }} · {{ o.get_estado_revision_display }} · {{ o.evidencia }}</li>{% empty %}<li>Sin referencias a hallazgos.</li>{% endfor %}</ul>
+{% if perms.gestion_contractual.view_auditoria %}<a href="{{ auditoria_url }}?entidad_afectada=ObligacionContractual&amp;q={{ ob.pk }}">Auditoría de la obligación</a>{% endif %}
+</details>{% empty %}<p>Sin obligaciones registradas.</p>{% endfor %}
+{% endblock %}

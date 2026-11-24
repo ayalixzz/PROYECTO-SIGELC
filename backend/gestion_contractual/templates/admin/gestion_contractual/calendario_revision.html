@@ -1,0 +1,19 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Calendario operativo administrativo. Los meses y años conservan su fecha nominal: el abogado revisa el traslado aplicable. No sustituye calendario judicial ni valida normas especiales.</p>
+{% if calendario %}
+<h2>{{ calendario.anio }} · Versión {{ calendario.version|default:"histórica" }} · {{ vigencia }}</h2>
+<p>Responsable: {{ calendario.responsable|default:"Pendiente" }} · Aprobación: {{ calendario.aprobado_en|default:"No aprobada" }}</p>
+<p>Fuente: <a href="{{ calendario.fuente }}">{{ calendario.fuente }}</a> · {{ calendario.justificacion }}</p>
+<p><a href="{% url 'admin:sigelc_calendario_preparar' %}?anio={{ calendario.anio }}">Preparar nueva versión</a></p>
+<h3>Festivos de descanso</h3>{{ calendario.festivos|json_script:"festivos-calendario" }}<pre>{{ calendario.festivos }}</pre>
+<h3>Conmemoraciones, descansos y fundamentos</h3><pre>{{ calendario.fundamentos }}</pre>
+<h3>Política, excepciones y advertencias</h3><pre>{{ calendario.politica }}</pre><pre>{{ calendario.excepciones }}</pre><pre>{{ calendario.advertencias }}</pre>
+<h3>Comparación determinista</h3><form method="get">Versión de referencia (ID): <input name="comparar_con" type="number" min="1"><button>Comparar</button></form><pre>{{ comparacion }}</pre>
+<h3>Impactos y decisiones conservados</h3>
+<table><tr><th>ID</th><th>Expediente</th><th>Objeto</th><th>Clasificación</th><th>Evidencia</th></tr>
+{% for e in evaluaciones %}<tr><td>{{ e.pk }}</td><td>{% if e.instancia %}<a href="{% url 'admin:gestion_contractual_contrato_change' e.instancia.contrato_id %}">{{ e.instancia.contrato }}</a>{% else %}<a href="{% url 'admin:gestion_contractual_competencia' e.calculo.contrato_id %}">{{ e.calculo.contrato }}</a>{% endif %}</td><td>{{ e.accion }} · Instancia {{ e.instancia_id|default:"—" }} · Cálculo {{ e.calculo_id|default:"—" }}</td><td>{{ e.clasificacion }}</td><td>{{ e.detalle }}</td></tr>{% empty %}<tr><td>No hay evaluaciones de esta versión.</td></tr>{% endfor %}</table>
+{% endif %}
+{% if form %}<h3>{% if calendario %}Aprobación manual{% else %}Generar propuesta{% endif %}</h3><form method="post">{% csrf_token %}{{ form.as_p }}<button name="accion" value="{{ accion }}">Guardar</button></form>{% endif %}
+{% if confirmacion %}<h3>Confirmar corrección de vencimiento abierto</h3><p>Conserva el vencimiento original. No altera notificaciones ni estados. Los períodos sin aprobación requieren primero validar el calendario.</p><form method="post">{% csrf_token %}{{ confirmacion.as_p }}<button name="accion" value="confirmar">Confirmar con justificación</button></form>{% endif %}
+{% endblock %}
