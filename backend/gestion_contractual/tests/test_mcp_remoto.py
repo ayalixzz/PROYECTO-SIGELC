@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 from django.core.exceptions import ValidationError
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 @skipUnless(find_spec('mcp'), 'Requiere el SDK MCP opcional.')
 class LimiteMCPTest(SimpleTestCase):
@@ -26,6 +26,26 @@ class LimiteMCPTest(SimpleTestCase):
 
 @skipUnless(find_spec('mcp'), 'Requiere el SDK MCP opcional.')
 class OAuthPropuestasTest(SimpleTestCase):
+    @override_settings(SETTINGS_MODULE='config.settings_hospedado')
+    async def test_claude_usa_alcances_registrados_si_no_solicita_un_subconjunto(self):
+        from mcp.server.auth.provider import AuthorizationParams
+        from mcp.shared.auth import OAuthClientInformationFull
+        from pydantic import AnyHttpUrl
+
+        from ..mcp_oauth import CLAUDE_CALLBACK, LECTURA, PROPUESTAS, ProveedorOAuth, _huella
+
+        proveedor = ProveedorOAuth('https://sigelc-revision.onrender.com', [2], permitir_propuestas=True)
+        cliente = OAuthClientInformationFull(client_id='test', redirect_uris=[AnyHttpUrl(CLAUDE_CALLBACK)],
+                                            scope=f'{LECTURA} {PROPUESTAS}')
+        for scopes, esperados in ((None, [LECTURA, PROPUESTAS]), ([LECTURA], [LECTURA])):
+            parametros = AuthorizationParams(
+                state='estado-de-prueba', scopes=scopes, code_challenge='A' * 43,
+                redirect_uri=cliente.redirect_uris[0], redirect_uri_provided_explicitly=True, resource=proveedor.resource,
+            )
+            direccion = await proveedor.authorize(cliente, parametros)
+            identificador = parse_qs(urlsplit(direccion).query)['solicitud'][0]
+            self.assertEqual(proveedor.solicitudes[_huella(identificador)].solicitud.scopes, esperados)
+
     def test_metadatos_distinguen_alcance_ofrecido_del_requerido(self):
         from starlette.applications import Starlette
         from starlette.testclient import TestClient

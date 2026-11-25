@@ -3,18 +3,19 @@ from importlib.util import find_spec
 from io import BytesIO
 from unittest import skipUnless
 from unittest.mock import patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 from zipfile import ZipFile
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from . import test_revision_flujo
 from .calendarios_ficticios import aprobar_ficticio
 from ..management.commands.sembrar_demo import incorporar_plantilla
-from ..mcp_demo import NUMERO
+from ..mcp_demo import NIT_DEMO, NUMERO, OPERACIONES_HOSPEDADAS, PERFIL_HOSPEDADO
 from ..models import Auditoria, DocumentoGenerado, TipoRequerimiento
 from ..revision_claude import VIGENCIA, recibir_propuestas
 
@@ -122,3 +123,98 @@ class RevisionClaudeTest(TestCase):
             self.assertEqual(respuesta['propuestas'], 0)
             self.assertEqual(self.paquete(anterior=revision.pk).status_code, 201)
             self.accion(datos, 'solicitar-claude', 400)
+
+    def test_demo_hospedada_analiza_varios_documentos_recien_cargados_sin_compartir_el_resto(self):
+        from .test_revision_ingesta import comprimido, docx
+        from .. import mcp_tools
+        from ..mcp_tools import Propuesta
+
+        self.abrir_sesion()
+        self.contrato.numero_contrato = NUMERO
+        self.contrato.contratista_identificacion = 'FICTICIO-001'
+        self.contrato.save()
+        self.contrato.entidad.nit = NIT_DEMO
+        self.contrato.entidad.save()
+        Auditoria.objects.create(usuario=self.abogado, accion='registrar_expediente_demo',
+            entidad_afectada='Contrato', identificador_registro=str(self.contrato.pk),
+            datos_nuevos={'identificador_demo': NUMERO})
+        inicial = self.paquete(operacion=dict(OPERACIONES_HOSPEDADAS)[1]).json()
+        anterior = self.paquete(anterior=inicial['id'], operacion=dict(OPERACIONES_HOSPEDADAS)[2]).json()
+        entrega = self.client.post(self.url + 'revisiones/', {
+            'archivos': SimpleUploadedFile('entrega.zip', comprimido({
+                f'Soporte {i}.docx': docx(f'Texto ficticio {i}.') for i in range(1, 4)
+            })), 'operacion': uuid4(), 'anterior_id': anterior['id'],
+        }, format='multipart', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(entrega.status_code, 201, entrega.content)
+        revision = self.contrato.revisiones_inteligentes.get(pk=entrega.json()['id'])
+        fuentes = list(revision.fuentes_revision.exclude(tipo='zip').order_by('pk'))
+        primera, segunda, excluida = fuentes
+        seleccion = [primera.pk, segunda.pk]
+        zip_id = revision.fuentes_revision.get(tipo='zip').pk
+
+        with (
+            override_settings(SETTINGS_MODULE=PERFIL_HOSPEDADO, ALLOWED_HOSTS=['testserver'],
+                SIGELC_MCP_ENTREGAS=(inicial['id'], anterior['id']), SIGELC_MCP_PROPUESTAS=True),
+            patch('gestion_contractual.revision_claude.verificar_base'),
+        ):
+            sin_analizar = self.client.get(f'{self.url}revisiones/{revision.pk}/').json()
+            self.assertFalse(sin_analizar['claude']['puede_solicitar'])
+            datos = self.accion(entrega.json(), 'analizar')
+            self.assertFalse(datos['claude']['puede_consultar'])
+            self.assertTrue(datos['claude']['puede_solicitar'])
+            self.assertEqual(datos['claude']['documentos_disponibles'], [f.pk for f in fuentes])
+            self.accion(datos, 'solicitar-claude', 400, documentos=seleccion, confirmado=True)
+            self.accion(datos, 'solicitar-claude', 400, documentos=[zip_id], confirmado=True, ficticios=True)
+            self.accion(datos, 'solicitar-claude', 400, documentos=[primera.pk] * 2, confirmado=True, ficticios=True)
+            creada = self.accion(datos, 'solicitar-claude', documentos=seleccion, confirmado=True, ficticios=True)
+            solicitud = UUID(creada['claude']['solicitud']['id'])
+            self.assertEqual(creada['claude']['solicitud']['documentos'], seleccion)
+            self.accion(datos, 'solicitar-claude', 400,
+                       documentos=[excluida.pk], confirmado=True, ficticios=True)
+            permiso = {'entregas': [inicial['id'], anterior['id']], 'propuestas': True}
+            contexto = mcp_tools._acceso.set(lambda: (self.abogado, self.contrato, permiso))
+            try:
+                consultar = mcp_tools.sigelc_consultar_entrega.__wrapped__
+                with self.assertRaisesMessage(ValidationError, 'Entrega no autorizada'):
+                    consultar(self.contrato.pk, revision.pk)
+                with self.assertRaisesMessage(ValidationError, 'no pertenece'):
+                    consultar(self.contrato.pk, revision.pk, solicitud_id=uuid4())
+                args = (self.contrato.pk, revision.pk)
+                permiso['propuestas'] = False
+                with self.assertRaisesMessage(ValidationError, 'requiere una autorización vigente'):
+                    consultar(*args, solicitud_id=solicitud)
+                permiso['propuestas'] = True
+                with (patch('gestion_contractual.revision_claude.timezone.now', return_value=timezone.now() + VIGENCIA),
+                      self.assertRaisesMessage(ValidationError, 'venció')):
+                    consultar(*args, solicitud_id=solicitud)
+                pagina1 = consultar(*args, solicitud_id=solicitud, limite=1)
+                pagina2 = consultar(*args, solicitud_id=solicitud, limite=1, pagina=2)
+                self.assertTrue(pagina1['hay_mas'])
+                self.assertFalse(pagina2['hay_mas'])
+                self.assertEqual([p['resultados'][0]['id'] for p in [pagina1, pagina2]], seleccion)
+                with self.assertRaisesMessage(ValidationError, 'Documento no autorizado'):
+                    consultar(*args, solicitud_id=solicitud, documento_id=excluida.pk)
+
+                def cita(fuente):
+                    fragmento = fuente.fragmentos[0]
+                    return {'documento_id': fuente.pk, 'ubicacion': fragmento['ubicacion'],
+                            'fragmento': fragmento['texto']}
+
+                propuesta = Propuesta(categoria='documental', descripcion='Cotejo de prueba.',
+                    evidencia=[cita(primera), cita(segunda)], fundamento='Cotejo de los dos soportes.',
+                    recomendacion='Revisión humana.', incertidumbre='baja')
+                devolver = mcp_tools.sigelc_entregar_propuestas.__wrapped__
+                ajena = propuesta.model_copy(update={'evidencia': [mcp_tools.Cita(**cita(excluida))]})
+                with self.assertRaisesMessage(ValidationError, 'La cita no existe'):
+                    devolver(*args, solicitud, [ajena])
+                resultado = devolver(*args, solicitud, [propuesta])
+                self.assertEqual(resultado['propuestas'], 1)
+                with self.assertRaisesMessage(ValidationError, 'selección de documentos pendiente'):
+                    consultar(*args, solicitud_id=solicitud)
+            finally:
+                mcp_tools._acceso.reset(contexto)
+            detalle = self.client.get(f'{self.url}revisiones/{revision.pk}/').json()
+            hallazgo = next(h for h in detalle['analisis']['hallazgos'] if h.get('origen') == 'claude_desktop')
+            self.assertEqual(hallazgo['estado'], 'PENDIENTE_REVISION')
+            self.assertEqual([cita['documento_id'] for cita in hallazgo['evidencia']], seleccion)
+            self.assertEqual(detalle['claude']['solicitud']['estado'], 'recibida')

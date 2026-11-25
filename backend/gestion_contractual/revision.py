@@ -67,12 +67,12 @@ def recibir_documento(*, usuario, contrato_id, categoria, archivo, fecha_recepci
             if existente.contrato_id != contrato.pk or existente.cargado_por_id != usuario.pk:
                 raise ValidationError('Identificador de operación en uso.')
             return existente
-        if not TipoDocumental.objects.filter(pk=categoria.pk, activo=True).exists():
+        if categoria is not None and not TipoDocumental.objects.filter(pk=categoria.pk, activo=True).exists():
             raise ValidationError('Seleccione un tipo documental activo.')
         if anterior is not None and not documentos_vigentes(contrato).filter(pk=anterior.pk, categoria=categoria).exists():
             raise ValidationError('Seleccione la última versión de este contrato y categoría.')
         documento = DocumentoContrato(
-            contrato=contrato, categoria=categoria, tipo_documento=categoria.nombre,
+            contrato=contrato, categoria=categoria, tipo_documento=categoria.nombre if categoria else 'Soporte contractual',
             nombre_original=Path(archivo.name).name, fecha_recepcion=fecha_recepcion,
             descripcion=descripcion, cargado_por=usuario, anterior=anterior, motivo_rectificacion=motivo.strip(),
             version=anterior.version + 1 if anterior else 1, operacion_recepcion=operacion,

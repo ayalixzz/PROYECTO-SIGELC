@@ -29,6 +29,7 @@ from .api_demo_serializers import (
     GeneracionEntrada, InicioSeguimientoEntrada, SesionEntrada,
 )
 from .calendarios_servicios import bloquear_calendarios
+from .catalogos_contrato import MODALIDADES_CONTRATACION, TIPOS_CONTRATO
 from .integridad import ConflictoEdicion
 from .models import Contrato, EntidadPublica, EstadoContrato, InstanciaSeguimiento, TipoRequerimiento
 from .primer_requerimiento import preparar_primer_requerimiento
@@ -185,6 +186,7 @@ def detalle_datos(contrato, usuario):
             'ver_documentos': ver_documentos(usuario),
             'ver_historial': ver_historial(usuario),
             'generar': puede_generar(usuario),
+            'cargar_documentos': tiene(usuario, 'view_documentocontrato', 'add_documentocontrato'),
             'iniciar_seguimiento': puede_iniciar,
         },
     }
@@ -195,6 +197,8 @@ class CatalogosView(DemoAPIView):
         return Response({
             'estados': [estado_datos(estado) for estado in EstadoContrato.objects.all()],
             'entidad': entidad_datos(EntidadPublica.objects.filter(activo=True).first()),
+            'tipos_contrato': TIPOS_CONTRATO,
+            'modalidades_contratacion': MODALIDADES_CONTRATACION,
             'permisos': {'crear': tiene(request.user, 'add_contrato')},
         })
 
@@ -203,22 +207,26 @@ class PaginacionContratos(PageNumberPagination):
     page_size = 25
 
 
+def filtrar_expedientes(usuario, datos):
+    ordenados = expedientes(usuario).order_by('-anio_contractual', 'numero_contrato', 'pk')
+    if datos.get('buscar'):
+        buscar = datos['buscar']
+        ordenados = ordenados.filter(Q(numero_contrato__icontains=buscar) |
+            Q(contratista_nombre__icontains=buscar) | Q(contratista_identificacion__icontains=buscar) |
+            Q(objeto_contractual__icontains=buscar))
+    if 'anio' in datos:
+        ordenados = ordenados.filter(anio_contractual=datos['anio'])
+    if 'estado' in datos:
+        ordenados = ordenados.filter(estado_actual__codigo=datos['estado'])
+    return ordenados
+
+
 class ContratosView(DemoAPIView):
     @transaction.atomic
     def get(self, request):
         filtros = FiltrosContrato(data=request.query_params)
         filtros.is_valid(raise_exception=True)
-        datos = filtros.validated_data
-        ordenados = expedientes(request.user).order_by('-anio_contractual', 'numero_contrato', 'pk')
-        if datos.get('buscar'):
-            buscar = datos['buscar']
-            ordenados = ordenados.filter(Q(numero_contrato__icontains=buscar) |
-                Q(contratista_nombre__icontains=buscar) | Q(contratista_identificacion__icontains=buscar) |
-                Q(objeto_contractual__icontains=buscar))
-        if 'anio' in datos:
-            ordenados = ordenados.filter(anio_contractual=datos['anio'])
-        if 'estado' in datos:
-            ordenados = ordenados.filter(estado_actual__codigo=datos['estado'])
+        ordenados = filtrar_expedientes(request.user, filtros.validated_data)
         bloquear_calendarios()
         paginador = PaginacionContratos()
         contratos = paginador.paginate_queryset(con_seguimiento_activo(ordenados), request)

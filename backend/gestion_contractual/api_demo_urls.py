@@ -3,13 +3,16 @@ from django.urls import path
 from . import api_demo_views as views
 from . import api_revision_inteligente as revision
 from .api_actuaciones import ActuacionesView
+from .api_operacion_contractual import CargaSoportesView, ExportarContratosView, TransicionesContratoView
 from .api_alertas import AlertasContratoView, PrioridadTemporalView, RegistrarAlertasView
+from .api_competencia import CompetenciaView
 from .models import TipoRequerimiento
 
 
 app_name = 'sigelc_demo'
 urlpatterns = [
     path('alertas/registrar/', RegistrarAlertasView.as_view(), name='registrar-alertas'),
+    path('contratos/<int:pk>/competencia/', CompetenciaView.as_view(), name='competencia'),
     path('contratos/<int:pk>/alertas/', AlertasContratoView.as_view(), name='alertas-contrato'),
     path('contratos/<int:pk>/alertas/registrar/', RegistrarAlertasView.as_view(), name='registrar-alertas-contrato'),
     path('contratos/<int:pk>/alertas/prioridad/', PrioridadTemporalView.as_view(), name='prioridad-temporal'),
@@ -26,11 +29,14 @@ urlpatterns = [
     path('dashboard/', views.DashboardView.as_view(), name='dashboard'),
     path('catalogos/', views.CatalogosView.as_view(), name='catalogos'),
     path('contratos/', views.ContratosView.as_view(), name='contratos'),
+    path('contratos/exportar/', ExportarContratosView.as_view(), name='exportar-contratos'),
     path('contratos/<int:pk>/', views.ContratoView.as_view(), name='contrato'),
     path('contratos/<int:pk>/seguimiento/', views.SeguimientoView.as_view(), name='seguimiento'),
+    path('contratos/<int:pk>/transiciones/', TransicionesContratoView.as_view(), name='transiciones'),
     path('contratos/<int:pk>/vencimientos/', views.VencimientosView.as_view(), name='vencimientos'),
     path('contratos/<int:pk>/historial/', views.HistorialView.as_view(), name='historial'),
     path('contratos/<int:pk>/documentos/', views.DocumentosView.as_view(), name='documentos'),
+    path('contratos/<int:pk>/documentos/cargar/', CargaSoportesView.as_view(), name='cargar-documentos'),
     path('contratos/<int:pk>/documentos/<int:documento_id>/descargar/', views.DescargarView.as_view(), name='descargar'),
     path('contratos/<int:pk>/primer-requerimiento/', views.RequerimientoView.as_view(), name='primer-requerimiento'),
     path('contratos/<int:pk>/segundo-requerimiento/',

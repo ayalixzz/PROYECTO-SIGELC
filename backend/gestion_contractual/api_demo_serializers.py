@@ -9,8 +9,8 @@ from .models import Contrato
 CAMPOS_EDITABLES = (
     'numero_contrato', 'anio_contractual', 'objeto_contractual', 'tipo_contrato',
     'modalidad_contratacion', 'contratista_nombre', 'contratista_identificacion',
-    'valor_inicial', 'valor_actual', 'fecha_suscripcion', 'fecha_asignacion',
-    'fecha_inicio', 'fecha_terminacion', 'supervisor_nombre', 'observaciones',
+    'valor_inicial', 'valor_adicional', 'valor_actual', 'fecha_suscripcion', 'fecha_asignacion',
+    'fecha_inicio', 'fecha_terminacion', 'supervisor_nombre', 'supervisor_cargo', 'observaciones',
 )
 
 
@@ -33,13 +33,30 @@ class SesionEntrada(EntradaEstricta, serializers.Serializer):
 class ContratoEntrada(EntradaEstricta, serializers.ModelSerializer):
     anio_contractual = serializers.IntegerField(min_value=1900, max_value=9999)
     valor_inicial = serializers.DecimalField(max_digits=20, decimal_places=2, min_value=Decimal('0'))
-    valor_actual = serializers.DecimalField(max_digits=20, decimal_places=2, min_value=Decimal('0'))
+    valor_adicional = serializers.DecimalField(
+        max_digits=20, decimal_places=2, min_value=Decimal('0'), required=False,
+    )
+    valor_actual = serializers.DecimalField(
+        max_digits=20, decimal_places=2, min_value=Decimal('0'), required=False,
+    )
 
     class Meta:
         model = Contrato
         fields = CAMPOS_EDITABLES
         # El modelo valida unicidad sobre el expediente completo y la base protege carreras.
         validators = []
+
+    def validate(self, attrs):
+        if self.instance is None and 'valor_actual' not in attrs:
+            attrs.setdefault('valor_adicional', Decimal('0.00'))
+        adicional = attrs.get('valor_adicional', getattr(self.instance, 'valor_adicional', None))
+        if adicional is not None and 'valor_actual' in attrs:
+            inicial = attrs.get('valor_inicial', getattr(self.instance, 'valor_inicial', None))
+            if attrs['valor_actual'] != inicial + adicional:
+                raise serializers.ValidationError({
+                    'valor_actual': ['El total debe coincidir con la suma del valor inicial y adicional.'],
+                })
+        return attrs
 
 
 class ContratoEdicionEntrada(ContratoEntrada):
@@ -53,7 +70,7 @@ class ContratoEdicionEntrada(ContratoEntrada):
             raise serializers.ValidationError({'version_registro': ['Incluya la versión que abrió para editar.']})
         if len(attrs) == 1:
             raise serializers.ValidationError('Ingrese por lo menos un campo contractual.')
-        return attrs
+        return super().validate(attrs)
 
 
 class ContratoSalida(serializers.ModelSerializer):

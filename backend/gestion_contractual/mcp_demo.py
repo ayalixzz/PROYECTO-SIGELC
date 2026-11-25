@@ -146,9 +146,12 @@ def catalogo_juridico():
     return _referencias({'referencias_juridicas': getattr(settings, 'SIGELC_REFERENCIAS_REVISION', [])})
 
 
-def validar_propuestas(revision, operacion, propuestas):
+def validar_propuestas(revision, operacion, propuestas, *, documentos=None):
     referencias = catalogo_juridico()
-    fuentes = {f.pk: f for f in revision.fuentes_revision.exclude(tipo='zip')}
+    disponibles = revision.fuentes_revision.exclude(tipo='zip')
+    if documentos is not None:
+        disponibles = disponibles.filter(pk__in=documentos)
+    fuentes = {f.pk: f for f in disponibles}
     resultado = []
     for indice, propuesta in enumerate(propuestas):
         evidencia = []

@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import { Aviso, Carga, EstadoBadge, Icon, Plazo, RecursoError, SinDatos, Titulo } from '../components/Ui'
 import { api, mensaje, useRecurso } from '../services/api'
-import type { Documento, Expediente, Generacion, Previsualizacion } from '../services/api'
+import type { Documento, Estado, Expediente, Generacion, Previsualizacion } from '../services/api'
 import { fecha, moneda } from '../services/formato'
 import { ActuacionesPanel } from './Actuaciones'
 import { AlertasContrato } from './Alertas'
@@ -39,8 +39,10 @@ function Resumen({ contrato }: { contrato: Expediente }) {
         <Campo label="Contratista">{contrato.contratista_nombre}</Campo>
         <Campo label="Identificación">{contrato.contratista_identificacion}</Campo>
         <Campo label="Supervisor">{contrato.supervisor_nombre}</Campo>
+        <Campo label="Cargo del supervisor">{contrato.supervisor_cargo}</Campo>
         <Campo label="Valor inicial">{moneda(contrato.valor_inicial)}</Campo>
-        <Campo label="Valor actual">{moneda(contrato.valor_actual)}</Campo>
+        <Campo label="Valor adicional">{contrato.valor_adicional === null ? 'Sin registro' : moneda(contrato.valor_adicional)}</Campo>
+        <Campo label="Valor total del contrato">{moneda(contrato.valor_actual)}</Campo>
       </dl>
       <div className="detail-text"><h3>Objeto contractual</h3><p>{contrato.objeto_contractual}</p></div>
       {contrato.observaciones && <div className="detail-text"><h3>Observaciones</h3><p>{contrato.observaciones}</p></div>}
@@ -100,7 +102,71 @@ function Seguimiento({ contrato, recargar }: { contrato: Expediente; recargar: (
       <button type="button" className="button button-primary" onClick={iniciar} disabled={busy || !confirmado}>
         <Icon name="clock" size={17} />{busy ? 'Iniciando…' : 'Iniciar seguimiento'}</button>
     </div>}
+    {contrato.permisos.editar && contrato.seguimiento.some((etapa) => !etapa.fecha_finalizacion) &&
+      <CambioEstado contrato={contrato} recargar={recargar} />}
   </section>
+}
+
+function CambioEstado({ contrato, recargar }: { contrato: Expediente; recargar: () => void }) {
+  const path = `contratos/${contrato.id}/transiciones/`
+  const opciones = useRecurso<{ instancia: number | null; hoy: string; estados: Estado[] }>(path)
+  const [busy, setBusy] = useState(false)
+  const [aviso, setAviso] = useState<{ tipo: 'exito' | 'error'; texto: string }>()
+  const actual = contrato.seguimiento.find((etapa) => !etapa.fecha_finalizacion)
+  const data = opciones.data
+
+  async function cambiar(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formulario = event.currentTarget
+    const campos = new FormData(formulario)
+    setBusy(true)
+    setAviso(undefined)
+    try {
+      await api<Expediente>(path, { method: 'POST', body: {
+        estado_nuevo_id: Number(campos.get('estado')),
+        instancia_esperada: data?.instancia,
+        fecha_efectiva: campos.get('fecha'),
+        motivo: String(campos.get('motivo') ?? '').trim(),
+        confirmado: campos.has('confirmar'),
+        documentos_ids: campos.getAll('soporte').map(Number),
+      } })
+      formulario.reset()
+      setAviso({ tipo: 'exito', texto: 'Cambio registrado en el historial del expediente.' })
+      opciones.recargar()
+      recargar()
+    } catch (error) {
+      setAviso({ tipo: 'error', texto: mensaje(error) })
+    } finally { setBusy(false) }
+  }
+
+  return <div className="start-tracking">
+    <h3>Cambiar estado</h3>
+    {aviso && <Aviso tipo={aviso.tipo}>{aviso.texto}</Aviso>}
+    {opciones.loading && <Carga texto="Consultando transiciones…" />}
+    {opciones.error && <RecursoError error={opciones.error} recargar={opciones.recargar} />}
+    {data && (data.estados.length && actual?.id === data.instancia ?
+      <form className="ri-form" onSubmit={cambiar} key={data.instancia}>
+        <fieldset className="ri-fields-form" disabled={busy}>
+          <label className="field"><span>Siguiente estado</span><select name="estado" required defaultValue="">
+            <option value="">Selecciona un estado permitido</option>
+            {data.estados.map((estado) => <option value={estado.id} key={estado.id}>{estado.nombre}</option>)}
+          </select></label>
+          <label className="field"><span>Fecha efectiva</span>
+            <input name="fecha" type="date" min={actual?.fecha_inicio} max={data.hoy} defaultValue={data.hoy} required />
+          </label>
+          <label className="field"><span>Justificación</span><textarea name="motivo" rows={3} maxLength={4000} required /></label>
+          {contrato.documentos.length > 0 && <details>
+            <summary>Vincular soportes existentes</summary>
+            {contrato.documentos.map((doc) => <label className="checkbox-label" key={doc.id}>
+              <input type="checkbox" name="soporte" value={doc.id} /> {doc.nombre_original}
+            </label>)}
+          </details>}
+          <label className="checkbox-label"><input type="checkbox" name="confirmar" required />
+            Confirmo la fecha, el estado y la justificación del cambio.</label>
+          <button className="button button-primary" type="submit">{busy ? 'Guardando…' : 'Registrar cambio'}</button>
+        </fieldset>
+      </form> : <p className="subtle">La etapa vigente no tiene un siguiente estado habilitado.</p>)}
+  </div>
 }
 
 function Descarga({ documento, docx }: { documento: Documento; docx?: boolean }) {
@@ -111,9 +177,71 @@ function Descarga({ documento, docx }: { documento: Documento; docx?: boolean })
   </a>
 }
 
-function Documentos({ contrato }: { contrato: Expediente }) {
+function CargaSoportes({ id, recargar }: { id: number; recargar: () => void }) {
+  const path = `contratos/${id}/documentos/cargar/`
+  const catalogo = useRecurso<{ id: number; nombre: string }[]>(path)
+  const [nombres, setNombres] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [aviso, setAviso] = useState<{ tipo: 'exito' | 'error'; texto: string }>()
+  const operacion = useRef('')
+
+  async function cargar(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = event.currentTarget
+    const body = new FormData(form)
+    const archivos = body.getAll('archivos').filter((value): value is File => value instanceof File && value.size > 0)
+    if (!archivos.length || archivos.length > 12 || archivos.some((archivo) => archivo.size > 20 * 1024 ** 2)
+        || archivos.reduce((total, archivo) => total + archivo.size, 0) > 44 * 1024 ** 2) {
+      setAviso({ tipo: 'error', texto: 'Selecciona de 1 a 12 archivos de hasta 20 MB cada uno y 44 MB en total.' })
+      return
+    }
+    if (!body.get('categoria_id')) body.delete('categoria_id')
+    if (!body.get('fecha_recepcion')) body.delete('fecha_recepcion')
+    operacion.current ||= crypto.randomUUID()
+    body.set('operacion', operacion.current)
+    setBusy(true)
+    setAviso(undefined)
+    try {
+      const resultado = await api<Documento[]>(path, { method: 'POST', body })
+      form.reset()
+      setNombres([])
+      operacion.current = ''
+      setAviso({ tipo: 'exito', texto: `Soportes guardados: ${resultado.length}.` })
+      recargar()
+    } catch (error) {
+      setAviso({ tipo: 'error', texto: mensaje(error) })
+    } finally { setBusy(false) }
+  }
+
+  return <div className="start-tracking">
+    <h3>Cargar soportes</h3>
+    {aviso && <Aviso tipo={aviso.tipo}>{aviso.texto}</Aviso>}
+    <form className="ri-form" onSubmit={cargar} onChange={() => { operacion.current = '' }}>
+      <fieldset className="ri-fields-form" disabled={busy}>
+        <label className="field"><span>Archivos PDF, DOCX o XLSX</span>
+          <input name="archivos" type="file" accept=".pdf,.docx,.xlsx" multiple required
+            onChange={(event) => setNombres(Array.from(event.target.files ?? [], (archivo) => archivo.name))} />
+          <small>Hasta 12 archivos, 20 MB por archivo y 44 MB por carga. En la demo usa archivos ficticios.</small>
+        </label>
+        {nombres.length > 0 && <ul>{nombres.map((nombre, i) => <li key={`${nombre}-${i}`}>{nombre}</li>)}</ul>}
+        {catalogo.data && catalogo.data.length > 0 && <label className="field"><span>Categoría</span>
+          <select name="categoria_id" defaultValue=""><option value="">Soporte contractual general</option>
+            {catalogo.data.map((item) => <option value={item.id} key={item.id}>{item.nombre}</option>)}
+          </select></label>}
+        <label className="field"><span>Fecha de recepción (opcional)</span><input type="date" name="fecha_recepcion" /></label>
+        <label className="field"><span>Descripción (opcional)</span><input name="descripcion" maxLength={4000} /></label>
+        <button className="button button-primary" type="submit" disabled={!nombres.length}>
+          {busy ? 'Cargando…' : 'Guardar soportes'}
+        </button>
+      </fieldset>
+    </form>
+  </div>
+}
+
+function Documentos({ contrato, recargar }: { contrato: Expediente; recargar: () => void }) {
   return <section className="panel detail-panel">
     <h2>Documentos asociados</h2>
+    {contrato.permisos.cargar_documentos && <CargaSoportes key={contrato.id} id={contrato.id} recargar={recargar} />}
     {!contrato.permisos.ver_documentos ? <Aviso>Tu usuario no tiene acceso a los documentos de este expediente.</Aviso> :
       contrato.documentos.length ? <ul className="file-list">
         {contrato.documentos.map((documento) => <li key={documento.id}>
@@ -183,7 +311,7 @@ function RequerimientoPanel({ contrato, tipo }: { contrato: Expediente; tipo: Re
 
   return <section className="panel detail-panel">
     <div className="section-head"><div><h2>{reqStages[tipo]}</h2>
-      <p className="subtle">Revisa los datos antes de generar el borrador institucional.</p></div>
+      <p className="subtle">Revisa los datos y el vencimiento antes de generar el borrador.</p></div>
       {data?.disponible && contrato.permisos.generar && <button type="button" className="button button-primary" onClick={generar} disabled={busy}>
         <Icon name="file" size={18} />{busy ? 'Generando DOCX…' : 'Generar borrador DOCX'}</button>}
     </div>
@@ -193,7 +321,9 @@ function RequerimientoPanel({ contrato, tipo }: { contrato: Expediente; tipo: Re
     {preview.loading && <Carga texto="Consultando datos y versiones…" />}
     {preview.error && <RecursoError error={preview.error} recargar={preview.recargar} />}
     {data && <>
-      {!data.disponible && <Aviso>{data.motivo || 'La generación aún no está disponible para este expediente.'}</Aviso>}
+      {!data.disponible && <Aviso>{data.motivo || 'La generación aún no está disponible para este expediente.'}{' '}
+        <a className="text-action" href={`#/contratos/${contrato.id}?seccion=seguimiento`}>Consultar el seguimiento</a>
+      </Aviso>}
       {data.campos.length > 0 && <details className="preview-details" open>
         <summary>Vista previa de campos <span className="badge badge-amber">{data.campos.filter((entry) => entry.pendiente).length} pendientes</span></summary>
         <div className="table-scroll" tabIndex={0} role="region" aria-label="Campos de la plantilla">
@@ -275,7 +405,7 @@ export function ExpedientePage({ id, query = '' }: { id: number; query?: string 
       {active === 'actuaciones' && (contrato.permisos.ver_historial
         ? <ActuacionesPanel contrato={contrato} />
         : <Aviso>Tu cuenta no tiene permiso para consultar las actuaciones.</Aviso>)}
-      {active === 'documentos' && <Documentos contrato={contrato} />}
+      {active === 'documentos' && <Documentos contrato={contrato} recargar={expediente.recargar} />}
       {active === 'requerimientos' && <Requerimientos contrato={contrato} />}
       {active === 'historial' && <Historial contrato={contrato} />}
     </>}

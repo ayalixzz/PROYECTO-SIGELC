@@ -121,7 +121,8 @@ h3 { font-size: 1rem; font-weight: 650; }
 .field input, .field select, .field textarea { background: white; border: 1px solid #cfdbea; color: #1b314b; padding: .55rem .66rem; min-height: 42px; border-radius: 7px; font-size: .87rem; width: 100%; }
 .field input::placeholder, .field textarea::placeholder { color: #667891; opacity: 1; }
 .field input:disabled { background: #edf1f6; color: #4f6279; }
-.field input[aria-invalid="true"], .field textarea[aria-invalid="true"] { border-color: #bd4454; }
+.field input[aria-invalid="true"], .field select[aria-invalid="true"], .field textarea[aria-invalid="true"] { border-color: #bd4454; }
+.contract-total { background: #edf1f6; color: #1b314b; padding: .55rem .66rem; min-height: 42px; border-radius: 7px; font-weight: 670; }
 .field textarea { resize: vertical; }
 .field-error, .required { color: #a82a3b; }
 .field-error { font-size: .76rem; }

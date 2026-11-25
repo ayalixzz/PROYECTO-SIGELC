@@ -21,7 +21,7 @@ _entregas_mcp = os.getenv('SIGELC_MCP_ENTREGAS', '')
 if _entregas_mcp and not re.fullmatch(r'[1-9][0-9]{0,17}(?:,[1-9][0-9]{0,17})?', _entregas_mcp):
     raise ImproperlyConfigured('SIGELC_MCP_ENTREGAS debe identificar hasta dos entregas ficticias.')
 SIGELC_MCP_ENTREGAS = tuple(map(int, _entregas_mcp.split(','))) if _entregas_mcp else ()
-SIGELC_MCP_PROPUESTAS = False
+SIGELC_MCP_PROPUESTAS = bool(SIGELC_MCP_ENTREGAS) and os.getenv('SIGELC_MCP_PROPUESTAS') == 'si'
 
 CSRF_TRUSTED_ORIGINS = [f'https://{_hostname}']
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

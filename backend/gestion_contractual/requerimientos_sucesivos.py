@@ -35,14 +35,13 @@ def contexto_requerimiento_sucesivo(contrato, plantilla, contenido, marcadores, 
     valores.update(tipo_contrato=contrato.tipo_contrato, destinatario=contrato.supervisor_nombre or None,
                    plazo_dias_habiles=etapa.plazo_dias_habiles, fecha_vencimiento=fecha_documental,
                    abogado=usuario.get_full_name() or None)
-    # El perfil del abogado no identifica la oficina/cargo del supervisor.
     # Tampoco se atribuye una revisión o aprobación por el hecho de generar un borrador.
-    valores.update(dependencia=None, cargo_supervisor=None, revisor=None,
+    valores.update(dependencia=None, cargo_supervisor=contrato.supervisor_cargo or None, revisor=None,
                    consideracion_oportunidad=None, observaciones_pagos=None, firmante=None, anexos=None, copias=None)
     atributos = {
         'numero_contrato': 'numero_contrato', 'vigencia': 'anio_contractual', 'tipo_contrato': 'tipo_contrato',
         'entidad': 'entidad.nombre', 'nit_entidad': 'entidad.nit', 'destinatario': 'supervisor_nombre',
-        'supervisor': 'supervisor_nombre', 'contratista': 'contratista_nombre',
+        'supervisor': 'supervisor_nombre', 'cargo_supervisor': 'supervisor_cargo', 'contratista': 'contratista_nombre',
         'identificacion_contratista': 'contratista_identificacion', 'objeto': 'objeto_contractual',
         'fecha_suscripcion': 'fecha_suscripcion', 'fecha_inicio': 'fecha_inicio', 'fecha_terminacion': 'fecha_terminacion',
     }

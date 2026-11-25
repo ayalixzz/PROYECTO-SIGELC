@@ -124,14 +124,20 @@ El `Dockerfile` compila React y lo sirve junto a Django mediante HTTPS desde un 
 
 ### Claude Desktop Pro en Render
 
-Cuando el conector de la demo esté desplegado, Claude puede consultar en modo de solo lectura las dos entregas ficticias preparadas de `SIGELC-DEMO-001` en Supabase. La conversación usa la cuenta Claude del cliente y el conector se autoriza con el usuario de la demo SIGELC.
+Claude puede consultar las dos entregas ficticias preparadas de `SIGELC-DEMO-001` en Supabase. Con el permiso adicional de propuestas, el abogado puede seleccionar varios documentos de la última entrega ficticia analizada y recibir observaciones pendientes en SIGELC. La conversación usa la cuenta Claude del cliente y el conector se autoriza con el usuario de la demo SIGELC.
 
-El responsable del despliegue configura `SIGELC_MCP_ENTREGAS` en Render con los IDs de las muestras aprobadas, separados por comas. En este piloto son `1,2`. El servidor verifica que correspondan a las dos cargas ficticias originales antes de activar el endpoint. Con la variable vacía, el conector queda deshabilitado.
+El responsable del despliegue configura `SIGELC_MCP_ENTREGAS` en Render con los IDs de las muestras aprobadas, separados por comas. En este piloto son `1,2`. El servidor verifica que correspondan a las dos cargas ficticias originales antes de activar el endpoint. Con la variable vacía, el conector queda deshabilitado. `SIGELC_MCP_PROPUESTAS=si` habilita el alcance adicional y el consentimiento para devolver propuestas.
 
 1. En Claude Desktop, abre **Customize → Connectors → + Add → Add custom connector**. Escribe **SIGELC Demo** y la URL `https://sigelc-revision.onrender.com/mcp`.
-2. Elige **Sign in now** y **Register automatically** para OAuth. En la página de SIGELC, inicia sesión con `abogado-demo` y aprueba el permiso de lectura.
+2. Elige **Sign in now** y **Register automatically** para OAuth. En la página de SIGELC, inicia sesión con `abogado-demo` y aprueba los permisos. Si habías conectado una versión de solo lectura, vuelve a autorizar el conector para recibir las propuestas.
 3. En una conversación, activa **SIGELC Demo** desde **+ → Connectors**. Prueba este mensaje:
 
    > Usa el conector SIGELC Demo para comparar las entregas 1 y 2 de SIGELC-DEMO-001. Indica qué se corrigió y qué sigue pendiente. Incluye documento, ubicación, evidencia y fundamento verificable para cada observación.
 
 Confirma la conexión cuando Claude liste las herramientas y responda con datos del expediente. Si la demo tarda en cargar, espera a que abra la web de SIGELC antes de conectar. Si Render recicla el proceso, su estado OAuth en memoria se pierde y puede ser necesario quitar y volver a agregar el conector. El análisis se ejecuta en la conversación de Claude y usa la suscripción del cliente, sin contratar la API de Anthropic. [Guía de conectores remotos de Claude](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)
+
+#### Analizar varios documentos y recibir las propuestas
+
+En `SIGELC-DEMO-001`, abre **Revisión inteligente** y carga varios archivos ficticios o un ZIP. Ejecuta las **Verificaciones locales**, selecciona los documentos con texto y autoriza la revisión con Claude. Abre la consulta preparada y envíala con el conector activo. La entrega se actualiza cuando llegan las propuestas. En **Hallazgos**, aprueba las observaciones sustentadas y luego abre **Documentos Word** para generar el acta o el requerimiento. El envío a Claude se limita a los documentos de la solicitud autorizada.
+
+En **Contratos**, **Exportar CSV** exporta todos los expedientes que coinciden con los filtros. Desde un expediente, **Documentos** carga soportes privados y **Seguimiento** registra avances permitidos con fecha efectiva y justificación. **Alertas y prioridad** contiene el cálculo de competencia y su verificación manual. Los cálculos pendientes de fechas, datos o calendario conservan ese estado hasta su revisión.

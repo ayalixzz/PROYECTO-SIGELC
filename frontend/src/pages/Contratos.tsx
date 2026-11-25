@@ -22,6 +22,8 @@ export function Contratos({ query = '' }: { query?: string }) {
   const contratos = useRecurso<Pagina<Contrato>>(`contratos/${query ? `?${query}` : ''}`)
   const catalogos = useRecurso<Catalogos>('catalogos/')
   const hayFiltros = ['buscar', 'anio', 'estado'].some((key) => params.has(key))
+  const filtrosExportacion = new URLSearchParams(params)
+  filtrosExportacion.delete('page')
 
   function filtrar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -38,8 +40,13 @@ export function Contratos({ query = '' }: { query?: string }) {
 
   return <>
     <Titulo etiqueta="Cartera contractual" title="Contratos" description="Busca, registra y consulta expedientes."
-      actions={catalogos.data?.permisos?.crear && catalogos.data.entidad
-        ? <a className="button button-primary" href="#/contratos/nuevo"><Icon name="plus" size={18} /> Nuevo contrato</a> : null} />
+      actions={<>
+        <a className="button button-secondary" href={`/api/contratos/exportar/?${filtrosExportacion}`} download>
+          <Icon name="download" size={18} /> Exportar CSV
+        </a>
+        {catalogos.data?.permisos?.crear && catalogos.data.entidad &&
+          <a className="button button-primary" href="#/contratos/nuevo"><Icon name="plus" size={18} /> Nuevo contrato</a>}
+      </>} />
     <section className="panel list-panel" aria-label="Listado contractual">
       {catalogos.error && <div className="panel-pad"><RecursoError error={catalogos.error} recargar={catalogos.recargar} /></div>}
       <form className="filter-bar" onSubmit={filtrar} key={params.get('buscar') + ':' + params.get('anio') + ':' + params.get('estado')}>

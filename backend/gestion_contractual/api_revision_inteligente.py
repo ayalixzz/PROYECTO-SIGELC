@@ -11,7 +11,7 @@ from .api_demo_datos import borrador_datos
 from .api_demo_serializers import EntradaEstricta
 from .api_demo_views import DemoAPIView, expediente, exigir_permiso, tiene
 from .models import Auditoria, DocumentoGenerado
-from .revision_claude import estado_claude, solicitar
+from .revision_claude import MAX_DOCUMENTOS, estado_claude, solicitar
 from .revision_flujo import (
     ETAPAS, analisis_registrado, decidir, documentos_analizables, ejecutar_revision, generar_desde_revision, registrar_paquete,
 )
@@ -66,6 +66,13 @@ class Generacion(Operacion):
 class AnalisisExterno(Operacion):
     documentos = serializers.ListField(child=serializers.IntegerField(min_value=1), min_length=1, max_length=24)
     confirmado = serializers.BooleanField()
+
+
+class SolicitudClaude(Operacion):
+    documentos = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False,
+                                       min_length=1, max_length=MAX_DOCUMENTOS)
+    confirmado = serializers.BooleanField(required=False)
+    ficticios = serializers.BooleanField(required=False)
 
 
 def validar(clase, datos):
@@ -189,7 +196,7 @@ class RevisionIAView(RevisionView):
 class RevisionClaudeSolicitudView(RevisionView):
     def post(self, request, pk, rid):
         revision = self.revision(request, pk, rid)
-        solicitar(usuario=request.user, revision=revision, **validar(Operacion, request.data))
+        solicitar(usuario=request.user, revision=revision, **validar(SolicitudClaude, request.data))
         return Response(detalle(revision, request.user))
 
 

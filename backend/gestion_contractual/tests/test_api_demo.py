@@ -142,6 +142,67 @@ class ApiDemoTest(TestCase):
         self.assertTrue(salida['permisos']['iniciar_seguimiento'])
         self.assertTrue(Auditoria.objects.filter(accion='crear_contrato', identificador_registro=str(contrato.pk)).exists())
 
+    def test_catalogos_ofrecen_tipos_y_modalidades_para_captura(self):
+        self.abrir_sesion()
+        respuesta = self.client.get('/api/catalogos/')
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn('Prestación de servicios', respuesta.json()['tipos_contrato'])
+        self.assertIn('Contratación directa', respuesta.json()['modalidades_contratacion'])
+        self.assertIn('Mínima cuantía', respuesta.json()['modalidades_contratacion'])
+
+    def test_cargo_y_adicion_calculan_total_en_creacion_y_edicion(self):
+        self.abrir_sesion()
+        datos = self.contrato_nuevo()
+        del datos['valor_actual']
+        datos.update(
+            supervisor_cargo='Analista de seguimiento', valor_inicial='123456789012345678.01',
+            valor_adicional='0.09',
+        )
+        respuesta = self.escribir('post', '/api/contratos/', datos)
+        self.assertEqual(respuesta.status_code, 201, respuesta.content)
+        salida = respuesta.json()
+        self.assertEqual(salida['supervisor_cargo'], datos['supervisor_cargo'])
+        self.assertEqual(salida['valor_adicional'], '0.09')
+        self.assertEqual(salida['valor_actual'], '123456789012345678.10')
+        ruta = f"/api/contratos/{salida['id']}/"
+        editado = self.escribir('patch', ruta, {'version_registro': 1, 'valor_adicional': '100.01'})
+        self.assertEqual(editado.status_code, 200, editado.content)
+        self.assertEqual(editado.json()['valor_actual'], '123456789012345778.02')
+        self.assertEqual(self.client.get(ruta).json()['valor_actual'], '123456789012345778.02')
+
+    def test_adicion_valida_negativos_totales_inconsistentes_y_exceso_de_precision(self):
+        self.abrir_sesion()
+        datos = self.contrato_nuevo()
+        datos['valor_adicional'] = '1.00'
+        for cambios, campo in (
+            ({'valor_adicional': '-1.00'}, 'valor_adicional'),
+            ({'valor_adicional': '0.001'}, 'valor_adicional'),
+            ({}, 'valor_actual'),
+        ):
+            respuesta = self.escribir('post', '/api/contratos/', {**datos, **cambios})
+            self.assertEqual(respuesta.status_code, 400)
+            self.assertIn(campo, respuesta.json())
+        del datos['valor_actual']
+        datos.update(valor_inicial='999999999999999999.99', valor_adicional='0.01')
+        respuesta = self.escribir('post', '/api/contratos/', datos)
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('valor_actual', respuesta.json())
+
+    def test_valor_historico_sin_desglose_se_conserva_al_editar_cargo(self):
+        self.abrir_sesion()
+        datos = self.contrato_nuevo()
+        datos['valor_actual'] = '71354.10'
+        respuesta = self.escribir('post', '/api/contratos/', datos)
+        self.assertEqual(respuesta.status_code, 201, respuesta.content)
+        contrato = respuesta.json()
+        self.assertIsNone(contrato['valor_adicional'])
+        respuesta = self.escribir('patch', f"/api/contratos/{contrato['id']}/", {
+            'version_registro': 1, 'supervisor_cargo': 'Cargo registrado posteriormente',
+        })
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIsNone(respuesta.json()['valor_adicional'])
+        self.assertEqual(respuesta.json()['valor_actual'], '71354.10')
+
     def test_entrada_invalida_y_duplicados_rechazados(self):
         self.abrir_sesion()
         datos = self.contrato_nuevo()
@@ -177,7 +238,7 @@ class ApiDemoTest(TestCase):
                 self.assertIn(clave, respuesta.json())
         self.assertEqual(self.escribir('delete', self.url, {}).status_code, 405)
         self.assertEqual(self.escribir('post', self.url + 'documentos/', {}).status_code, 405)
-        self.assertEqual(self.escribir('post', self.url + 'transiciones/', {}).status_code, 404)
+        self.assertEqual(self.escribir('post', self.url + 'transiciones/', {}).status_code, 400)
         self.assertEqual(self.client.get('/admin/login/').status_code, 404)
         self.assertEqual(self.client.get('/documentos/1/descargar/').status_code, 404)
 

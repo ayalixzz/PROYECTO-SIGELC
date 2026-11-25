@@ -141,6 +141,10 @@ class Contrato(models.Model):
     contratista_nombre = models.CharField(max_length=255)
     contratista_identificacion = models.CharField('identificación del contratista', max_length=80)
     valor_inicial = models.DecimalField(max_digits=20, decimal_places=2, validators=[MinValueValidator(Decimal('0'))])
+    valor_adicional = models.DecimalField(
+        'valor adicional del contrato', max_digits=20, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(Decimal('0'))],
+    )
     valor_actual = models.DecimalField(max_digits=20, decimal_places=2, validators=[MinValueValidator(Decimal('0'))])
     fecha_suscripcion = models.DateField('fecha de suscripción')
     fecha_asignacion = models.DateField('fecha real de asignación', null=True, blank=True)
@@ -150,6 +154,7 @@ class Contrato(models.Model):
     abogado_responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='contratos_abogado')
     supervisor_responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='contratos_supervisor', null=True, blank=True, editable=False)
     supervisor_nombre = models.CharField('supervisor contractual', max_length=255, blank=True)
+    supervisor_cargo = models.CharField('cargo del supervisor', max_length=255, blank=True, db_default='')
     observaciones = models.TextField(blank=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
@@ -157,6 +162,25 @@ class Contrato(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['entidad', 'anio_contractual', 'numero_contrato'], name='contrato_entidad_anio_numero_unico'), models.UniqueConstraint(fields=['anio_contractual', 'numero_contrato'], name='contrato_anio_numero_global_unico'), models.CheckConstraint(condition=Q(valor_inicial__gte=0) & Q(valor_actual__gte=0), name='contrato_valores_no_negativos'), models.CheckConstraint(condition=Q(anio_contractual__gte=1900) & Q(anio_contractual__lte=9999), name='contrato_anio_valido')]
+        constraints.append(models.CheckConstraint(
+            condition=Q(valor_adicional__isnull=True) | (
+                Q(valor_adicional__gte=0) & Q(valor_actual=models.F('valor_inicial') + models.F('valor_adicional'))
+            ),
+            name='contrato_adicion_total_consistente',
+        ))
+
+    def clean_fields(self, exclude=None):
+        if self.valor_adicional is not None:
+            # Los importes históricos sin desglose conservan el valor registrado.
+            try:
+                inicial = self._meta.get_field('valor_inicial').to_python(self.valor_inicial)
+                adicional = self._meta.get_field('valor_adicional').to_python(self.valor_adicional)
+            except ValidationError:
+                pass  # clean_fields informa el campo inválido.
+            else:
+                if inicial is not None:
+                    self.valor_actual = inicial + adicional
+        super().clean_fields(exclude=exclude)
 
     def clean(self):
         super().clean()
@@ -198,6 +222,8 @@ class Contrato(models.Model):
                 kwargs['update_fields'] = [f.name for f in self._meta.concrete_fields if not f.primary_key and f.name != 'estado_actual']
             else:
                 kwargs['update_fields'] = set(campos) | {'version_registro', 'fecha_actualizacion'}
+                if self.valor_adicional is not None and {'valor_inicial', 'valor_adicional'} & set(campos):
+                    kwargs['update_fields'].add('valor_actual')
         else:
             self._valores_anteriores = {}
             self.version_registro = 1

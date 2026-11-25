@@ -6,6 +6,7 @@ import re
 import sys
 from datetime import date, timedelta
 from decimal import Decimal
+from functools import cache
 from getpass import getpass
 from hashlib import sha256
 from io import BytesIO
@@ -25,7 +26,9 @@ from django.db import connection, connections
 from django.utils import timezone
 
 from gestion_contractual.archivos_transaccionales import escritura_con_archivo
+from gestion_contractual.calendario import calendario_disponible
 from gestion_contractual.calendarios_servicios import aprobar, proponer, vigente
+from gestion_contractual.competencia import Estado, evaluar, sumar_meses
 from gestion_contractual.contenido_demo import plantilla_ficticia
 from gestion_contractual.models import (
     Auditoria, Contrato, DocumentoContrato, EntidadPublica, EstadoContrato,
@@ -39,6 +42,7 @@ NIT_DEMO = 'SIGELC-DEMO-000'
 ENTIDAD_DEMO = 'Entidad pública ficticia · demostración SIGELC'
 CARGO_DEMO = 'Abogado de demostración SIGELC'
 DEPENDENCIA_DEMO = 'Equipo contractual ficticio'
+SUFIJO_COMPETENCIA_DEMO = '006'
 PRIMERO = TipoRequerimiento.PRIMERO
 FLUJO_DEMO = (
     PRIMERO,
@@ -238,9 +242,25 @@ def calendario_para_simulacion(anio, usuario):
     )
     aprobar(
         propuesta_id=propuesta.pk, usuario=usuario, confirmado=True,
-        fundamento='Simulación técnica exclusiva de test_sigelc_db para plazos ficticios. Sin validación institucional.',
+        fundamento='Simulación técnica en la base aislada de demostración para plazos ficticios. Sin validación institucional.',
         operacion=clave_operacion(f'calendario-simulacion:{anio}'),
     )
+
+
+def plan_competencia_demo(hoy, *, calendario=calendario_disponible):
+    """Escoge una terminación ficticia con un límite nominal en la próxima ventana de avisos."""
+    calendario_anual = cache(calendario)
+    for dias in range(1, 31):
+        terminacion = sumar_meses(hoy + timedelta(days=dias), -30)
+        estado, propuesta = evaluar({
+            'fecha_terminacion': terminacion.isoformat(), 'origen': 'ejecucion', 'sujeto': 'si',
+            'regimen': 'art11_cpaca', 'pacto': 'no', 'liquidacion': 'ninguna', 'incidencias': 'no',
+        }, calendario=calendario_anual)
+        limite = propuesta['limite_competencia']
+        if estado == Estado.PENDIENTE and limite and 1 <= (date.fromisoformat(limite) - hoy).days <= 30:
+            anios = sorted({d['anio'] for d in propuesta['dependencias_calendario']['fechas']})
+            return terminacion, anios
+    raise CommandError('No se encontró un caso ficticio verificable con el calendario de simulación disponible.')
 
 
 def soporte_docx(contrato):
@@ -288,7 +308,7 @@ def crear_soporte(contrato, usuario, guardar):
 
 
 def crear_expediente(*, sufijo, objeto, contratista, entidad, usuario, estados, asignacion, avance,
-                     hoy, soporte, anterior, guardar, plantillas):
+                     hoy, soporte, anterior, guardar, plantillas, terminacion=None):
     numero = f'SIGELC-DEMO-{sufijo}'
     existentes = list(Contrato.objects.filter(numero_contrato=numero))
     if existentes:
@@ -302,9 +322,10 @@ def crear_expediente(*, sufijo, objeto, contratista, entidad, usuario, estados, 
             raise CommandError(f'El identificador {numero} ya está reservado por otro expediente.')
         return contrato, False
 
-    terminacion = asignacion - timedelta(days=7)
-    if anterior:
-        terminacion = min(terminacion, date(hoy.year - 1, 12, 15))
+    if terminacion is None:
+        terminacion = asignacion - timedelta(days=7)
+        if anterior:
+            terminacion = min(terminacion, date(hoy.year - 1, 12, 15))
     suscripcion = terminacion - timedelta(days=58)
     contrato = guardar_contrato(
         usuario=usuario,
@@ -353,6 +374,8 @@ class Command(BaseCommand):
         parser.add_argument('--password-env', metavar='SIGELC_DEMO_VARIABLE')
         parser.add_argument('--cambiar-clave', action='store_true')
         parser.add_argument('--requerimientos-adicionales', action='store_true')
+        parser.add_argument('--caso-competencia', action='store_true',
+                            help='Prepara un expediente y calendarios ficticios para verificar competencia manualmente.')
         parser.add_argument(
             '--plantillas', choices=('auto', 'institucionales', 'ficticias'), default='auto',
             help='Use plantillas ficticias portables o las copias institucionales verificadas cuando existan.',
@@ -360,9 +383,12 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         modo_plantillas = options['plantillas']
+        caso_competencia = options['caso_competencia']
+        if caso_competencia and modo_plantillas != 'ficticias':
+            raise CommandError('El caso de competencia requiere --plantillas ficticias.')
         verificar_aislamiento(modo_plantillas)
         hoy = timezone.localdate()
-        if hoy.year < 1985:
+        if hoy.year < (1987 if caso_competencia else 1985):
             raise CommandError('La fecha local está fuera del intervalo del calendario de la demostración.')
         usuario_nombre = options['usuario'].strip()
         if not usuario_nombre:
@@ -394,11 +420,24 @@ class Command(BaseCommand):
                 incorporar_plantilla(TipoRequerimiento.OBSERVACIONES, usuario, ficticia=ficticias)
                 for anio in sorted({(hoy - timedelta(days=70)).year, hoy.year, (hoy + timedelta(days=40)).year}):
                     calendario_para_simulacion(anio, usuario)
+                terminacion_competencia = None
+                if caso_competencia and not Contrato.objects.filter(numero_contrato=f'SIGELC-DEMO-{SUFIJO_COMPETENCIA_DEMO}').exists():
+                    terminacion_competencia, anios = plan_competencia_demo(hoy)
+                    for anio in anios:
+                        calendario_para_simulacion(anio, usuario)
                 resultados = [crear_expediente(
                     sufijo=sufijo, objeto=objeto, contratista=contratista, entidad=entidad, usuario=usuario,
                     estados=estados, asignacion=hoy - timedelta(days=dias), avance=avance, hoy=hoy,
                     soporte=soporte, anterior=anterior, guardar=guardar, plantillas=plantillas,
                 ) for sufijo, objeto, contratista, dias, avance, soporte, anterior in ejemplos]
+                if caso_competencia:
+                    resultados.append(crear_expediente(
+                        sufijo=SUFIJO_COMPETENCIA_DEMO, objeto='Ejercicio ficticio de seguimiento de fechas de liquidación',
+                        contratista='Servicios Simulados Competencia', entidad=entidad, usuario=usuario,
+                        estados=estados, asignacion=hoy - timedelta(days=2), avance=0, hoy=hoy,
+                        soporte=False, anterior=False, guardar=guardar, plantillas=plantillas,
+                        terminacion=terminacion_competencia,
+                    ))
         except ValidationError as error:
             raise CommandError(' '.join(error.messages)) from error
         except (FileNotFoundError, KeyError, StopIteration) as error:

@@ -11,6 +11,7 @@ from time import time
 from urllib.parse import urlsplit
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core.exceptions import ValidationError
 from django.db import close_old_connections
@@ -30,7 +31,7 @@ from pydantic import AnyHttpUrl
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.routing import Route
 
-from .mcp_demo import expediente_ficticio, verificar_base
+from .mcp_demo import PERFIL_HOSPEDADO, expediente_ficticio, verificar_base
 from .models import Auditoria
 
 
@@ -267,7 +268,11 @@ class ProveedorOAuth:
         if (params.resource != self.resource or not params.state or len(params.state) > 512 or
                 not CHALLENGE.fullmatch(params.code_challenge) or str(params.redirect_uri) not in self.redirect_uris):
             raise AuthorizeError('invalid_request', 'Recurso, estado, callback o reto OAuth inválido.')
-        alcances = params.scopes if params.scopes is not None else [LECTURA]
+        alcances = params.scopes
+        if alcances is None:
+            # Claude puede omitir el parámetro y usar los alcances de su registro.
+            hospedado = settings.SETTINGS_MODULE == PERFIL_HOSPEDADO
+            alcances = (cliente.scope or LECTURA).split() if hospedado and PROPUESTAS in self.alcances else [LECTURA]
         if not self._alcance_valido(alcances):
             raise AuthorizeError('invalid_scope', 'El alcance solicitado no está disponible en este piloto.')
         params = params.model_copy(update={'scopes': [a for a in self.alcances if a in alcances]})

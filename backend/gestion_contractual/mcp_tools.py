@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import close_old_connections
 from django.http import Http404
@@ -132,11 +133,19 @@ def sigelc_consultar_expediente(contrato_id: Id) -> dict:
 
 @herramienta
 def sigelc_consultar_entrega(contrato_id: Id, entrega_id: Id, pagina: Pagina = 1,
-                            limite: Limite = 6, documento_id: Id | None = None) -> dict:
-    """Entrega metadatos paginados o fragmentos paginados de un documento autorizado."""
-    _, c, permiso = autorizado(contrato_id)
-    r = servicio.entrega(c, permiso, entrega_id)
-    fuentes = r.fuentes_revision.order_by('pk')
+                            limite: Limite = 6, documento_id: Id | None = None,
+                            solicitud_id: UUID | None = None) -> dict:
+    """Lista documentos o fragmentos por página. Con solicitud_id lee solo su selección autorizada."""
+    usuario, c, permiso = autorizado(contrato_id)
+    if solicitud_id is None:
+        r = servicio.entrega(c, permiso, entrega_id)
+        fuentes = r.fuentes_revision.order_by('pk')
+    else:
+        from .revision_claude import documentos_autorizados
+
+        r = _entrega_para_solicitud(c, permiso, entrega_id)
+        seleccion = documentos_autorizados(usuario=usuario, revision=r, solicitud_id=solicitud_id)
+        fuentes = r.fuentes_revision.filter(pk__in=seleccion).order_by('pk')
     if documento_id is None:
         return {'entrega_id': r.pk, **paginar(list(fuentes.values('id', 'nombre', 'tipo', 'advertencias')), pagina, limite)}
     f = fuentes.filter(pk=documento_id).exclude(tipo='zip').first()
@@ -216,6 +225,17 @@ def sigelc_guardar_propuestas(contrato_id: Id, entrega_id: Id, operacion: UUID,
     return {'evento_id': evento.pk, 'propuestas': len(evento.datos['hallazgos']), 'estado': 'PENDIENTE_REVISION'}
 
 
+def _entrega_para_solicitud(contrato, permiso, entrega_id):
+    if not permiso.get('propuestas'):
+        raise ValidationError('Se requiere una autorización vigente para devolver propuestas o consultar la solicitud.')
+    if settings.SETTINGS_MODULE != servicio.PERFIL_HOSPEDADO:
+        return servicio.entrega(contrato, permiso, entrega_id)
+    revision = contrato.revisiones_inteligentes.filter(pk=entrega_id).first()
+    if not revision:
+        raise ValidationError('Entrega no autorizada.')
+    return revision
+
+
 @herramienta
 def sigelc_entregar_propuestas(
     contrato_id: Id, entrega_id: Id, solicitud_id: UUID,
@@ -225,9 +245,7 @@ def sigelc_entregar_propuestas(
     from .revision_claude import recibir_propuestas
 
     usuario, c, permiso = autorizado(contrato_id)
-    if not permiso.get('propuestas'):
-        raise ValidationError('Se requiere una autorización vigente para devolver propuestas.')
-    revision = servicio.entrega(c, permiso, entrega_id)
+    revision = _entrega_para_solicitud(c, permiso, entrega_id)
     return recibir_propuestas(usuario=usuario, revision=revision, solicitud_id=solicitud_id, propuestas=propuestas)
 
 
@@ -240,7 +258,9 @@ def crear_mcp(*, acceso, escritura=False, recibir_propuestas=False, max_resultad
         instrucciones += 'Presenta todas las propuestas antes de pedir autorización local para guardar.'
     if recibir_propuestas:
         instrucciones += (
-            'Si el abogado abrió una solicitud de análisis en SIGELC, usa la herramienta de entrega con su UUID. '
+            'Si la solicitud incluye documentos seleccionados, consulta la entrega con su solicitud_id y '
+            'recorre todas las páginas antes de generar las propuestas. '
+            'Devuelve el resultado con sigelc_entregar_propuestas y el UUID de la solicitud. '
             'Las propuestas quedan pendientes de revisión del abogado.'
         )
     servidor = FastMCP('sigelc', instructions=instrucciones, **configuracion)

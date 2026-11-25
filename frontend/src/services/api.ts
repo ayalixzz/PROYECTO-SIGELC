@@ -4,7 +4,13 @@ export interface Usuario { id: number; username: string; nombre: string }
 export interface Sesion { usuario: Usuario | null; csrfToken: string }
 export interface Entidad { id: number; nombre: string }
 export interface Estado extends Entidad { codigo: string }
-export interface Catalogos { entidad: Entidad | null; estados: Estado[]; permisos?: { crear: boolean } }
+export interface Catalogos {
+  entidad: Entidad | null
+  estados: Estado[]
+  tipos_contrato: string[]
+  modalidades_contratacion: string[]
+  permisos?: { crear: boolean }
+}
 export interface Vencimiento {
   fecha: string | null
   estado: 'confirmado' | 'provisional' | 'requiere_revision'
@@ -22,12 +28,14 @@ export interface CamposContrato {
   contratista_nombre: string
   contratista_identificacion: string
   valor_inicial: string
+  valor_adicional: string | null
   valor_actual: string
   fecha_suscripcion: string
   fecha_asignacion: string | null
   fecha_inicio: string | null
   fecha_terminacion: string | null
   supervisor_nombre: string
+  supervisor_cargo: string
   observaciones: string
 }
 
@@ -78,7 +86,8 @@ export interface Expediente extends Contrato {
   documentos: Documento[]
   advertencias: string[]
   puede_editar_fecha_asignacion: boolean
-  permisos: { editar: boolean; ver_documentos: boolean; ver_historial: boolean; generar: boolean; iniciar_seguimiento: boolean }
+  permisos: { editar: boolean; ver_documentos: boolean; ver_historial: boolean; generar: boolean; iniciar_seguimiento: boolean;
+    cargar_documentos?: boolean }
 }
 
 export interface Pagina<T> { count: number; next: string | null; previous: string | null; results: T[] }

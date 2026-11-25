@@ -4,6 +4,7 @@ import { Aviso, Carga, Icon, RecursoError, SinDatos } from '../components/Ui'
 import { api, ErrorApi, mensaje, useRecurso } from '../services/api'
 import type { AlertaContractual, AlertasExpediente, AlertasPanel, AvisoRevisionContractual, UltimoMemorando } from '../services/api'
 import { fecha, hoyBogota } from '../services/formato'
+import { CompetenciaPanel } from './Competencia'
 
 const prioridades: Record<string, string> = { critica: 'Crítica', alta: 'Alta', media: 'Media', baja: 'Baja', normal: 'Normal', ninguna: 'Sin prioridad' }
 const fuentes: Record<string, string> = {
@@ -219,25 +220,23 @@ export function AlertasContrato({ id }: { id: number }) {
   const path = `contratos/${id}/alertas/`
   const recurso = useRecurso<AlertasExpediente>(path)
   const [prioridadActualizada, setPrioridadActualizada] = useState<AlertasExpediente['prioridad']>()
-  const { data } = recurso
+  const [fichaActualizada, setFichaActualizada] = useState<AlertasExpediente>()
+  const data = fichaActualizada ?? recurso.data
   const registro = useRegistroHitos(data?.puede_registrar ? `${path}registrar/` : null)
-  // Update just the history after registration without refetching indefinitely.
-  const registroSolicitado = registro.completado
-  const [historial, setHistorial] = useState<AlertasExpediente['historial']>()
+  const registroTerminado = registro.completado || Boolean(registro.error)
   useEffect(() => {
-    if (!registroSolicitado) return
+    if (!registroTerminado) return
     const abort = new AbortController()
     api<AlertasExpediente>(path, { signal: abort.signal }).then((ficha) => {
-      if (!abort.signal.aborted) setHistorial(ficha.historial)
-    }).catch(() => { /* Conserva el historial de la consulta inicial. */ })
+      if (!abort.signal.aborted) setFichaActualizada(ficha)
+    }).catch(() => { /* Conserva la última ficha disponible. */ })
     return () => abort.abort()
-  }, [path, registroSolicitado])
+  }, [path, registroTerminado])
 
   if (recurso.loading) return <Carga texto="Consultando alertas y prioridad…" />
   if (recurso.error) return <RecursoError error={recurso.error} recargar={recurso.recargar} />
   if (!data) return null
   const prioridad = prioridadActualizada ?? data.prioridad
-  const actual = historial ?? data.historial
   return <div className="ri-stack">
     <HitosError error={registro.error} reintentar={registro.reintentar} />
     <div className="dashboard-grid">
@@ -255,13 +254,17 @@ export function AlertasContrato({ id }: { id: number }) {
       <ResumenMemorando memo={data.ultimo_memorando} contratoId={id} />
     </div>
     <section className="panel detail-panel">
-      <div className="section-head"><div><h2>Alertas vigentes</h2><p className="subtle">Seguimiento de fechas sustentadas en el expediente.</p></div></div>
+      <div className="section-head"><div><h2>Alertas vigentes</h2><p className="subtle">Las alertas de competencia cuentan días calendario. Las operativas cuentan días hábiles.</p></div></div>
       {data.alertas.length ? <ul className="ri-stack">{data.alertas.map((item) => <li className="ri-citation" key={item.clave}><DatosAlerta item={item} /></li>)}</ul>
         : <p className="subtle">No hay alertas vigentes en este expediente.</p>}
     </section>
     {data.revisiones.length > 0 && <Aviso><strong>Fechas por verificar</strong><ul>
       {data.revisiones.map((item) => <li key={item.tipo}>{item.motivo}</li>)}
     </ul></Aviso>}
-    <HistorialAlertas historial={actual} />
+    <CompetenciaPanel id={id} alGuardar={() => {
+      setPrioridadActualizada(undefined)
+      registro.reintentar()
+    }} />
+    <HistorialAlertas historial={data.historial} />
   </div>
 }
